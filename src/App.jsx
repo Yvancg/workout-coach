@@ -464,6 +464,7 @@ export default function App() {
   const completeSet = async () => {
     if (!currentExercise) return;
 
+    const restSeconds = currentExercise.rest || DEFAULT_REST_SECONDS;
     const completedValue = currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps;
     const entry = {
       timestamp: new Date().toISOString(),
@@ -476,14 +477,14 @@ export default function App() {
       completed: completedValue,
       isTime: !!currentExercise.isTime,
       weightGuide: resolveWeightGuide(currentExercise.weight, state.availableWeights),
-      tempo: currentExercise.isTime ? currentExercise.tempo : "2-2-3 voice",
-      rest: DEFAULT_REST_SECONDS,
+      tempo: currentExercise.tempo,
+      rest: restSeconds,
       sessionId: state.sessionId,
       durationMinutes: currentSessionDurationMinutes(),
     };
 
     await saveSetLocally(entry);
-    moveToNextStage(DEFAULT_REST_SECONDS);
+    moveToNextStage(restSeconds);
   };
 
   const resetSession = () => {

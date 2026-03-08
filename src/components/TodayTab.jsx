@@ -88,7 +88,7 @@ export function TodayTab({
               <div className="eyebrow">Today Ready</div>
               <div className="text-2xl font-black">{nextWorkout}</div>
             </div>
-            <div className="status-pill today-accent">{completedTodaySets} sets today</div>
+            <div className="status-pill today-accent">{completedTodaySets} local sets today</div>
           </div>
           <div className="stats-grid compact-grid">
             <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">

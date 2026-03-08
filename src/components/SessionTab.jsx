@@ -26,6 +26,8 @@ export function SessionTab({
   resetSession,
   finishSession,
 }) {
+  const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+
   return (
     <>
       <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
@@ -114,8 +116,8 @@ export function SessionTab({
               </div>
               <div className="border-4 border-black rounded-2xl p-3">
                 <div className="text-sm font-black">Tempo / Rest</div>
-                <div className="text-2xl font-black mt-1">{currentExercise.isTime ? currentExercise.tempo : "2-2-3 + 1s"}</div>
-                <div className="text-lg font-bold">{DEFAULT_REST_SECONDS}s rest</div>
+                <div className="text-2xl font-black mt-1">{currentExercise.tempo}</div>
+                <div className="text-lg font-bold">{restSeconds}s rest</div>
               </div>
             </div>
 
@@ -160,13 +162,13 @@ export function SessionTab({
             <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>
 
             <div className="border-4 border-black rounded-3xl p-4 text-center space-y-2">
-              <div className="text-sm font-black">Rest timer</div>
-              <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
-              <div className="grid grid-cols-2 gap-3">
-                <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || DEFAULT_REST_SECONDS })}><TimerReset className="mr-2 h-5 w-5" /> {state.restTimerRunning ? "Pause" : "Start"}</Button>
-                <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={skipRest}><ChevronRight className="mr-2 h-5 w-5" /> Skip</Button>
+                <div className="text-sm font-black">Rest timer</div>
+                <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || restSeconds })}><TimerReset className="mr-2 h-5 w-5" /> {state.restTimerRunning ? "Pause" : "Start"}</Button>
+                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={skipRest}><ChevronRight className="mr-2 h-5 w-5" /> Skip</Button>
+                </div>
               </div>
-            </div>
 
             {syncStatus && <div className="text-sm font-black">{syncStatus}</div>}
           </CardContent>

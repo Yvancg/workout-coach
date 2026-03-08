@@ -130,12 +130,14 @@ If you prefer not to hardcode the Worker URL in a build, you can still leave `VI
 - `GET /api/health`
 - `GET /api/snapshot` (auth required)
 - `GET /api/history-summary` (auth required)
-- `POST /api/logs`
-- `POST /api/sessions`
-- `PATCH /api/sessions/:sessionId`
-- `DELETE /api/sessions/:sessionId`
+- `POST /api/logs` (auth required)
+- `POST /api/sessions` (auth required)
+- `PATCH /api/sessions/:sessionId` (auth required)
+- `DELETE /api/sessions/:sessionId` (auth required)
 
 `/api/history-summary` returns grouped history rows ready for the app UI, so the client no longer needs to download the full raw log history just to render session cards.
+
+The app currently exports raw CSV only from logs stored on the local device. Cloudflare sync is used for grouped history summaries in the UI, not full raw-log rehydration.
 
 ## Stored Session Metadata
 
