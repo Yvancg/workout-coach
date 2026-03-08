@@ -1,0 +1,8 @@
+name = "workout-coach-api"
+main = "worker/src/index.js"
+compatibility_date = "2026-03-08"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "workout_coach"
+database_id = "YOUR_D1_DATABASE_ID"

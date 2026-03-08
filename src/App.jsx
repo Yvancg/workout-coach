@@ -151,7 +151,7 @@ const DEFAULT_STATE = {
   sessionStartedAt: null,
   sessionId: null,
   logs: [],
-  sheetWebhookUrl: "",
+  syncApiUrl: import.meta.env.VITE_SYNC_API_URL || "",
   soundEnabled: true,
   installReady: false,
   history: [],
@@ -166,11 +166,7 @@ const DEFAULT_STATE = {
   repGuideSide: "left",
 };
 
-const REP_PHASES = [
-  { label: "Lower", seconds: 3 },
-  { label: "Hold", seconds: 1 },
-  { label: "Lift", seconds: 2 },
-];
+const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
 
 const EXERCISE_REFERENCES = {
   "Chair Squat": "https://athlemove.com/exercises/squat/",
@@ -293,6 +289,10 @@ function confirmAction(message, callback) {
   }
 }
 
+function normalizeApiBase(url = "") {
+  return url.trim().replace(/\/$/, "");
+}
+
 function speak(text, enabled) {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -378,7 +378,7 @@ function Progress({ value = 0, className = "", ...props }) {
 
 export default function App() {
   const [state, setState] = useState(loadState);
-  const [sheetStatus, setSheetStatus] = useState("");
+  const [syncStatus, setSyncStatus] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
@@ -389,6 +389,13 @@ export default function App() {
   }, [state]);
 
   useEffect(() => {
+    const sheetWebhookUrl = state.sheetWebhookUrl;
+    if (sheetWebhookUrl && !state.syncApiUrl) {
+      setState((prev) => ({ ...prev, syncApiUrl: sheetWebhookUrl }));
+    }
+  }, [state.sheetWebhookUrl, state.syncApiUrl]);
+
+  useEffect(() => {
     const onBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -397,6 +404,39 @@ export default function App() {
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
   }, []);
+
+  useEffect(() => {
+    const apiBase = normalizeApiBase(state.syncApiUrl);
+    if (!apiBase) return;
+
+    let cancelled = false;
+
+    async function loadRemoteSnapshot() {
+      try {
+        setSyncStatus("Loading Cloudflare sync...");
+        const response = await fetch(`${apiBase}/api/snapshot`);
+        if (!response.ok) throw new Error("snapshot failed");
+
+        const payload = await response.json();
+        if (cancelled) return;
+
+        setState((prev) => ({
+          ...prev,
+          logs: Array.isArray(payload.logs) ? payload.logs : prev.logs,
+          history: Array.isArray(payload.history) ? payload.history : prev.history,
+        }));
+        setSyncStatus("Cloudflare sync connected");
+      } catch {
+        if (!cancelled) setSyncStatus("Cloudflare sync unavailable. Local save only.");
+      }
+    }
+
+    loadRemoteSnapshot();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.syncApiUrl]);
 
   useEffect(() => {
     if (state.setTimerRunning && state.setDurationRemaining > 0) {
@@ -439,38 +479,30 @@ export default function App() {
         const exercise = PROGRAMS[prev.activeProgram][prev.dayType]?.[prev.exerciseIndex];
         if (!exercise || exercise.isTime || !prev.repGuideRunning) return prev;
 
-        if (prev.repGuidePhaseRemaining > 1) {
-          const phase = REP_PHASES[prev.repGuidePhaseIndex];
-          if (phase?.label === "Hold" || phase?.label === "Lift") {
-            speak(String(prev.repGuidePhaseRemaining - 1), prev.soundEnabled);
-          }
-          return { ...prev, repGuidePhaseRemaining: prev.repGuidePhaseRemaining - 1 };
-        }
-
         if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
           const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
-          speak(REP_PHASES[nextPhaseIndex].label, prev.soundEnabled);
+          speak(REP_PHASES[nextPhaseIndex], prev.soundEnabled);
           return {
             ...prev,
             repGuidePhaseIndex: nextPhaseIndex,
-            repGuidePhaseRemaining: REP_PHASES[nextPhaseIndex].seconds,
+            repGuidePhaseRemaining: 1,
           };
         }
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            speak("Switch sides. Right. Lower", prev.soundEnabled);
+            speak("Right. Up", prev.soundEnabled);
             return {
               ...prev,
               repGuideSide: "right",
               repGuidePhaseIndex: 0,
-              repGuidePhaseRemaining: REP_PHASES[0].seconds,
+              repGuidePhaseRemaining: 1,
             };
           }
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          speak(done ? `Rep ${nextRep}. Set complete.` : `Rep ${nextRep}. Left. Lower`, prev.soundEnabled);
+          speak(done ? `Rep ${nextRep} complete. Set complete.` : `Rep ${nextRep} complete. Left. Up`, prev.soundEnabled);
 
           return {
             ...prev,
@@ -478,20 +510,20 @@ export default function App() {
             repGuideRunning: !done,
             repGuideSide: "left",
             repGuidePhaseIndex: 0,
-            repGuidePhaseRemaining: done ? 0 : REP_PHASES[0].seconds,
+            repGuidePhaseRemaining: done ? 0 : 1,
           };
         }
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        speak(done ? `Rep ${nextRep}. Set complete.` : `Rep ${nextRep}. Lower`, prev.soundEnabled);
+        speak(done ? `Rep ${nextRep} complete. Set complete.` : `Rep ${nextRep} complete. Up`, prev.soundEnabled);
 
         return {
           ...prev,
           currentRep: nextRep,
           repGuideRunning: !done,
           repGuidePhaseIndex: 0,
-          repGuidePhaseRemaining: done ? 0 : REP_PHASES[0].seconds,
+          repGuidePhaseRemaining: done ? 0 : 1,
         };
       });
     }, 1000);
@@ -525,9 +557,9 @@ export default function App() {
   const repGuideLabel = currentExercise?.isTime
     ? ""
     : isAlternateExercise(currentExercise?.name || "")
-      ? `${state.repGuideSide === "left" ? "Left" : "Right"} side`
-      : REP_PHASES[state.repGuidePhaseIndex]?.label || "Lower";
-  const sheetUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.sheetWebhookUrl);
+      ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
+      : REP_PHASES[state.repGuidePhaseIndex] || "Up";
+  const syncUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.syncApiUrl);
   const tabs = [
     { id: "today", label: "Setup", icon: House },
     { id: "session", label: "Session", icon: Activity },
@@ -612,6 +644,7 @@ export default function App() {
       warmupDone: false,
       dayType: getNextDayType(state.dayType),
     });
+    syncSessionToCloudflare(sessionRecord);
     runHaptic("success");
     speak("Session complete. Good work.", state.soundEnabled);
   };
@@ -624,22 +657,41 @@ export default function App() {
     updateState({ installReady: false });
   };
 
+  const syncSessionToCloudflare = async (sessionRecord) => {
+    const apiBase = normalizeApiBase(state.syncApiUrl);
+    if (!apiBase) return;
+
+    try {
+      setSyncStatus("Saving session to Cloudflare...");
+      const response = await fetch(`${apiBase}/api/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionRecord),
+      });
+      if (!response.ok) throw new Error("session sync failed");
+      setSyncStatus("Synced with Cloudflare");
+    } catch {
+      setSyncStatus("Cloudflare sync failed. Local save only.");
+    }
+  };
+
   const saveSetLocally = async (entry) => {
     const nextLogs = [...state.logs, entry];
     updateState({ logs: nextLogs });
 
-    if (!state.sheetWebhookUrl) return;
+    const apiBase = normalizeApiBase(state.syncApiUrl);
+    if (!apiBase) return;
     try {
-      setSheetStatus("Saving to Google Sheets...");
-      const response = await fetch(state.sheetWebhookUrl, {
+      setSyncStatus("Saving set to Cloudflare...");
+      const response = await fetch(`${apiBase}/api/logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry),
       });
       if (!response.ok) throw new Error("sync failed");
-      setSheetStatus("Saved to Google Sheets");
+      setSyncStatus("Synced with Cloudflare");
     } catch {
-      setSheetStatus("Local save only. Google Sheets sync failed");
+      setSyncStatus("Cloudflare sync failed. Local save only.");
     }
   };
 
@@ -758,7 +810,7 @@ export default function App() {
     confirmAction("Clear all local workout data from this device?", () => {
       localStorage.removeItem(STORAGE_KEY);
       setState(DEFAULT_STATE);
-      setSheetStatus("");
+      setSyncStatus("");
     });
   };
 
@@ -776,10 +828,10 @@ export default function App() {
       currentRep: shouldRestart ? 0 : state.currentRep,
       repGuideRunning: true,
       repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: REP_PHASES[0].seconds,
+      repGuidePhaseRemaining: 1,
       repGuideSide: nextSide,
     });
-    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. Lower` : "Lower", state.soundEnabled);
+    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. Up` : "Up", state.soundEnabled);
   };
 
   const restartRepGuide = () => {
@@ -886,15 +938,15 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-black mb-1">Google Sheets Apps Script webhook URL</label>
+                  <label className="block text-sm font-black mb-1">Cloudflare sync API URL</label>
                   <Input
                     className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
-                    placeholder="Paste your deployed Apps Script web app URL"
-                    value={state.sheetWebhookUrl}
-                    onChange={(e) => updateState({ sheetWebhookUrl: e.target.value })}
+                    placeholder="https://workout-coach-api.your-name.workers.dev"
+                    value={state.syncApiUrl}
+                    onChange={(e) => updateState({ syncApiUrl: e.target.value })}
                   />
-                  <p className="mt-1 text-xs font-semibold">A share link to the spreadsheet will not work here. This field needs a POST webhook URL from Google Apps Script.</p>
-                  {sheetUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That looks like a spreadsheet sharing link, not a webhook endpoint.</p>}
+                  <p className="mt-1 text-xs font-semibold">Paste your Cloudflare Worker base URL here to sync logs and history into D1. Leave blank for local-only mode.</p>
+                  {syncUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That still looks like a spreadsheet link. This field should point to your Worker URL.</p>}
                 </div>
 
                 <div>
@@ -1073,7 +1125,7 @@ export default function App() {
                     <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
                       <div className="text-sm font-black">Voice-guided rep count</div>
                       <div className="text-6xl font-black">{state.currentRep}</div>
-                      <div className="text-sm font-bold">{repGuideLabel} • 3-1-2 tempo {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
+                      <div className="text-sm font-bold">{repGuideLabel} • 2-2-3 tempo {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
                       <div className="grid grid-cols-2 gap-3">
                         <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}>
                           <RotateCcw className="mr-2 h-5 w-5" /> Restart
@@ -1124,7 +1176,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {sheetStatus && <div className="text-sm font-black">{sheetStatus}</div>}
+                  {syncStatus && <div className="text-sm font-black">{syncStatus}</div>}
                 </CardContent>
               </Card>
             )}
