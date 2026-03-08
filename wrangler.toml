@@ -10,6 +10,7 @@ ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
 ACCESS_AUD = "your-access-audience-tag"
 WRITE_RATE_LIMIT_MAX = "60"
 WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
+AUDIT_LOG_ENABLED = "true"
 
 [[d1_databases]]
 binding = "DB"

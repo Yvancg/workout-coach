@@ -92,6 +92,48 @@ function createHttpError(status, message, headers = {}) {
   return error;
 }
 
+function getClientIp(request) {
+  return (request.headers.get("CF-Connecting-IP") || "").trim();
+}
+
+function getUserAgent(request) {
+  return (request.headers.get("User-Agent") || "").slice(0, 255);
+}
+
+function safeJsonStringify(value) {
+  try {
+    return JSON.stringify(value ?? {});
+  } catch {
+    return "{}";
+  }
+}
+
+async function logAuditEvent(request, env, event) {
+  if (env.AUDIT_LOG_ENABLED === "false") return;
+
+  try {
+    const db = ensureDb(env);
+    await db.prepare(`
+      INSERT INTO audit_events (
+        event_type, owner_email, method, path, session_id, status_code,
+        client_ip, user_agent, details_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      event.eventType,
+      event.ownerEmail || "",
+      event.method || request.method || "",
+      event.path || new URL(request.url).pathname,
+      event.sessionId || "",
+      event.statusCode || 0,
+      getClientIp(request),
+      getUserAgent(request),
+      safeJsonStringify(event.details),
+    ).run();
+  } catch {
+    // Ignore audit logging failures so the main request path stays healthy.
+  }
+}
+
 async function verifyAccessJwt(request, env, accessEmail) {
   const issuer = getAccessIssuer(env);
   const audiences = getAccessAudiences(env);
@@ -224,7 +266,19 @@ async function assertWriteRateLimit(request, url, env, identity) {
 
   if ((current?.request_count || 0) > maxRequests) {
     const retryAfter = String(Math.max(1, bucket + windowSeconds - nowSeconds));
-    throw createHttpError(429, "Rate limit exceeded", { "Retry-After": retryAfter });
+    const error = createHttpError(429, "Rate limit exceeded", { "Retry-After": retryAfter });
+    error.auditEvent = {
+      eventType: "rate_limit_hit",
+      ownerEmail: identity.ownerEmail,
+      statusCode: 429,
+      details: {
+        bucketKey,
+        requestCount: current?.request_count || 0,
+        maxRequests,
+        windowSeconds,
+      },
+    };
+    throw error;
   }
 
   if (Math.random() < 0.05) {
@@ -421,7 +475,7 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const corsHeaders = getCorsHeaders(request, env);
 
@@ -462,17 +516,42 @@ export default {
 
       if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
         const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
-        return await handleSessionDelete(sessionId, request, env, identity);
+        const response = await handleSessionDelete(sessionId, request, env, identity);
+        ctx.waitUntil(logAuditEvent(request, env, {
+          eventType: "session_delete",
+          ownerEmail: identity.ownerEmail,
+          sessionId,
+          statusCode: 200,
+          details: { sessionId },
+        }));
+        return response;
       }
 
       if (request.method === "PATCH" && url.pathname.startsWith("/api/sessions/")) {
         const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
-        return await handleSessionUpdate(sessionId, request, env, identity);
+        const response = await handleSessionUpdate(sessionId, request, env, identity);
+        ctx.waitUntil(logAuditEvent(request, env, {
+          eventType: "session_update",
+          ownerEmail: identity.ownerEmail,
+          sessionId,
+          statusCode: 200,
+          details: { sessionId },
+        }));
+        return response;
       }
 
       return json({ error: "Not found" }, request, env, { status: 404 });
     } catch (error) {
       const status = typeof error?.status === "number" ? error.status : error?.message === "Origin not allowed" ? 403 : 500;
+      if (status === 401 || status === 403 || status === 429) {
+        const auditEvent = error?.auditEvent || {
+          eventType: status === 429 ? "rate_limit_hit" : "auth_failure",
+          ownerEmail: "",
+          statusCode: status,
+          details: { message: error instanceof Error ? error.message : "Unknown error" },
+        };
+        ctx.waitUntil(logAuditEvent(request, env, auditEvent));
+      }
       return json({ error: error instanceof Error ? error.message : "Unknown error" }, request, env, { status });
     }
   },

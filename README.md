@@ -77,11 +77,13 @@ ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
 ACCESS_AUD = "your-access-audience-tag"
 WRITE_RATE_LIMIT_MAX = "60"
 WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
+AUDIT_LOG_ENABLED = "true"
 ```
 
 - `ACCESS_TEAM_DOMAIN` is your Zero Trust team domain.
 - `ACCESS_AUD` is the audience value from the Access application.
 - `WRITE_RATE_LIMIT_MAX` and `WRITE_RATE_LIMIT_WINDOW_SECONDS` cap write bursts on sync routes.
+- `AUDIT_LOG_ENABLED` controls lightweight Worker audit logging for auth failures, rate-limit hits, session edits, and session deletes.
 
 8. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
@@ -106,6 +108,13 @@ npm run d1:migrate:local
 ```bash
 npm run d1:migrate:remote
 ```
+
+11. Audit events are stored in D1 for security review. The Worker records:
+
+- auth failures (`401` / `403`)
+- write-route rate-limit hits (`429`)
+- session edits
+- session deletes
 
 ## Worker Dev
 
