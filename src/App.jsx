@@ -25,6 +25,7 @@ import {
   downloadCsv,
   formatSeconds,
   getExerciseReferenceImageCandidates,
+  getPhaseCue,
   getNextDayType,
   getSyncApiBase,
   isAlternateExercise,
@@ -53,74 +54,6 @@ function speakWithStyle(text, enabled, mode = "default") {
   utterance.pitch = 1;
 
   window.speechSynthesis.speak(utterance);
-}
-
-function stopTempoCue(activeCueRef) {
-  const activeCue = activeCueRef.current;
-  if (!activeCue) return;
-
-  try {
-    activeCue.oscillator.stop();
-  } catch {
-    // oscillator may already be stopped
-  }
-
-  activeCue.oscillator.disconnect();
-  activeCue.gainNode.disconnect();
-  activeCueRef.current = null;
-}
-
-async function playTempoCue(phaseIndex, enabled, audioContextRef, activeCueRef) {
-  if (!enabled || typeof window === "undefined") return;
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
-
-  const audioContext = audioContextRef.current || new AudioContextClass();
-  audioContextRef.current = audioContext;
-  if (audioContext.state === "suspended") {
-    await audioContext.resume().catch(() => {});
-  }
-
-  stopTempoCue(activeCueRef);
-
-  const duration = REP_PHASE_DURATIONS[phaseIndex] || 1;
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
-  const startTime = audioContext.currentTime + 0.01;
-  const endTime = startTime + duration;
-
-  oscillator.type = phaseIndex === 2 ? "sine" : "triangle";
-
-  if (phaseIndex === 0) {
-    oscillator.frequency.setValueAtTime(440, startTime);
-    oscillator.frequency.linearRampToValueAtTime(660, endTime);
-  } else if (phaseIndex === 1) {
-    oscillator.frequency.setValueAtTime(660, startTime);
-  } else if (phaseIndex === 2) {
-    oscillator.frequency.setValueAtTime(660, startTime);
-    oscillator.frequency.linearRampToValueAtTime(330, endTime);
-  } else {
-    oscillator.frequency.setValueAtTime(330, startTime);
-  }
-
-  gainNode.gain.setValueAtTime(0.0001, startTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.045, startTime + 0.04);
-  gainNode.gain.setValueAtTime(0.045, Math.max(startTime + 0.04, endTime - 0.08));
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-  oscillator.start(startTime);
-  oscillator.stop(endTime);
-  activeCueRef.current = { oscillator, gainNode };
-  oscillator.onended = () => {
-    if (activeCueRef.current?.oscillator === oscillator) {
-      oscillator.disconnect();
-      gainNode.disconnect();
-      activeCueRef.current = null;
-    }
-  };
 }
 
 async function runHaptic(type = "light") {
@@ -153,8 +86,6 @@ export default function App() {
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
-  const tempoAudioContextRef = useRef(null);
-  const activeTempoCueRef = useRef(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -269,7 +200,7 @@ export default function App() {
 
         if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
           const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
-          playTempoCue(nextPhaseIndex, prev.soundEnabled, tempoAudioContextRef, activeTempoCueRef);
+          speakWithStyle(getPhaseCue(REP_PHASES[nextPhaseIndex], nextPhaseIndex), prev.soundEnabled, "set");
           return {
             ...prev,
             repGuidePhaseIndex: nextPhaseIndex,
@@ -279,7 +210,7 @@ export default function App() {
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            playTempoCue(0, prev.soundEnabled, tempoAudioContextRef, activeTempoCueRef);
+            speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
             return {
               ...prev,
               repGuideSide: "right",
@@ -290,7 +221,7 @@ export default function App() {
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          if (!done) playTempoCue(0, prev.soundEnabled, tempoAudioContextRef, activeTempoCueRef);
+          if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
 
           return {
             ...prev,
@@ -304,7 +235,7 @@ export default function App() {
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        if (!done) playTempoCue(0, prev.soundEnabled, tempoAudioContextRef, activeTempoCueRef);
+        if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
 
         return {
           ...prev,
@@ -318,16 +249,6 @@ export default function App() {
 
     return () => clearTimeout(repGuideRef.current);
   }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex, setState, state.soundEnabled]);
-
-  useEffect(() => {
-    if (state.repGuideRunning && state.sessionStage === "exercise") return;
-    stopTempoCue(activeTempoCueRef);
-  }, [state.repGuideRunning, state.sessionStage]);
-
-  useEffect(() => () => {
-    stopTempoCue(activeTempoCueRef);
-    tempoAudioContextRef.current?.close().catch(() => {});
-  }, []);
 
   const exercises = useMemo(() => PROGRAMS[state.activeProgram][state.dayType] || [], [state.activeProgram, state.dayType]);
   const currentProgramMeta = useMemo(() => PROGRAMS[state.activeProgram], [state.activeProgram]);
@@ -650,7 +571,6 @@ export default function App() {
   const resetSession = () => {
     resetRestTimer();
     confirmAction("Reset the full session and clear current progress?", () => {
-      stopTempoCue(activeTempoCueRef);
       runHaptic("light");
       updateState({
         exerciseIndex: 0,
@@ -740,13 +660,12 @@ export default function App() {
       repGuidePhaseRemaining: REP_PHASE_DURATIONS[0],
       repGuideSide: nextSide,
     });
-    playTempoCue(0, state.soundEnabled, tempoAudioContextRef, activeTempoCueRef);
+    speakWithStyle(getPhaseCue(REP_PHASES[0], 0), state.soundEnabled, "set");
   };
 
   const restartRepGuide = () => {
     resetRestTimer();
     confirmAction("Restart the guided rep count for this set?", () => {
-      stopTempoCue(activeTempoCueRef);
       updateState({
         currentRep: 0,
         repGuideRunning: false,
