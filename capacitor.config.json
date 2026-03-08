@@ -1,0 +1,9 @@
+{
+  "appId": "com.yvan.workoutcoach",
+  "appName": "Workout Coach",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
