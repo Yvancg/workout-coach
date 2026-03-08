@@ -40,9 +40,16 @@ function speakWithStyle(text, enabled, mode = "default") {
   if (!text) return;
 
   const voices = window.speechSynthesis.getVoices();
-  const preferredVoice = voices.find((voice) =>
-    /Google UK English Female|Google US English|Samantha|Karen|Moira|Daniel/i.test(voice.name),
-  ) || voices.find((voice) => /en-/i.test(voice.lang)) || null;
+  const voiceMatchers = [
+    /Samantha|Daniel|Karen|Moira|Google UK English Female|Google US English Female|Microsoft Aria|Microsoft Jenny|Microsoft Guy/i,
+    /Google.*English|Microsoft.*English|Alex/i,
+  ];
+  const preferredVoice = voiceMatchers
+    .map((matcher) => voices.find((voice) => matcher.test(voice.name)))
+    .find(Boolean)
+    || voices.find((voice) => /en-/i.test(voice.lang) && !voice.localService)
+    || voices.find((voice) => /en-/i.test(voice.lang))
+    || null;
 
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
@@ -50,8 +57,8 @@ function speakWithStyle(text, enabled, mode = "default") {
   utterance.lang = preferredVoice?.lang || "en-US";
 
   void mode;
-  utterance.rate = 1;
-  utterance.pitch = 1;
+  utterance.rate = 0.92;
+  utterance.pitch = 0.96;
 
   window.speechSynthesis.speak(utterance);
 }

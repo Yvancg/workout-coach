@@ -244,10 +244,9 @@ export function pickLine(lines, seed = 0) {
 
 export function getPhaseCue(phase, seed = 0) {
   void seed;
-  if (phase === "Up") return "up 2";
-  if (phase === "Hold" && seed === 1) return "hold";
-  if (phase === "Hold") return "hold 2";
-  if (phase === "Down") return "down 2 3";
+  if (phase === "Up") return "up";
+  if (phase === "Hold") return "hold";
+  if (phase === "Down") return "down";
   return phase;
 }
 
