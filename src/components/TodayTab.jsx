@@ -25,6 +25,17 @@ export function TodayTab({
   syncStatus,
   syncUrlLooksLikeSpreadsheet,
 }) {
+  const authSignedIn = Boolean(authUserEmail);
+  const syncModeLabel = !authConfigured
+    ? "Supabase auth not configured"
+    : !authSignedIn
+      ? "Signed out - local only until login"
+      : syncConnected
+        ? "Connected to sync"
+        : syncTarget === null
+          ? "Local-only mode"
+          : "Sync not connected";
+
   return (
     <>
       <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
@@ -77,11 +88,13 @@ export function TodayTab({
               <div className="space-y-2">
                 <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="email" autoComplete="email" placeholder="you@example.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
                 <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Email me a login link</Button>
+                <div className="text-xs font-semibold">You can still train and save locally while signed out. Login only unlocks cross-device sync.</div>
               </div>
             )}
             {authConfigured && authUserEmail && (
               <div className="space-y-2">
                 <div className="text-sm font-bold">Signed in as {authUserEmail}</div>
+                <div className="text-xs font-semibold">Remote sync is available for this device session.</div>
                 <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
               </div>
             )}
@@ -104,7 +117,7 @@ export function TodayTab({
 
           <div className="sync-indicator-row">
             <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
-            <div className="text-sm font-bold">{syncConnected ? "Connected to sync" : syncTarget === null ? "Local-only mode" : "Login required or sync not connected"}</div>
+            <div className="text-sm font-bold">{syncModeLabel}</div>
           </div>
           {syncIdentityEmail && <div className="text-xs font-semibold">Signed in as {syncIdentityEmail}</div>}
           {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
