@@ -55,6 +55,10 @@ function mapSessionRow(row) {
     dayType: row.day_type,
     durationMinutes: row.duration_minutes,
     setsCompleted: row.sets_completed,
+    note: row.note,
+    availableWeights: row.available_weights,
+    warmupCompleted: Boolean(row.warmup_completed),
+    stretchCompleted: Boolean(row.stretch_completed),
   };
 }
 
@@ -67,7 +71,7 @@ async function handleSnapshot(env) {
     LIMIT 250
   `).all();
   const sessionsResult = await db.prepare(`
-    SELECT session_id, date, program, day_type, duration_minutes, sets_completed
+    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
     ORDER BY date DESC, session_id DESC
     LIMIT 50
@@ -120,8 +124,9 @@ async function handleSessionCreate(request, env) {
   const db = ensureDb(env);
   await db.prepare(`
     INSERT OR REPLACE INTO session_history (
-      session_id, date, program, day_type, duration_minutes, sets_completed
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      session_id, date, program, day_type, duration_minutes, sets_completed,
+      note, available_weights, warmup_completed, stretch_completed
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.sessionId,
     payload.date,
@@ -129,6 +134,10 @@ async function handleSessionCreate(request, env) {
     payload.dayType || "",
     payload.durationMinutes || 0,
     payload.setsCompleted || 0,
+    payload.note || "",
+    payload.availableWeights || "",
+    payload.warmupCompleted ? 1 : 0,
+    payload.stretchCompleted ? 1 : 0,
   ).run();
 
   return json({ ok: true });

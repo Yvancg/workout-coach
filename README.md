@@ -1,16 +1,92 @@
-# React + Vite
+# Workout Coach
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React/Vite workout app with:
+- mobile-first session flow
+- installable PWA + Capacitor Android shell
+- optional Cloudflare Worker + D1 sync
 
-Currently, two official plugins are available:
+## Local App Dev
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Run the frontend:
 
-## React Compiler
+```bash
+npm install
+npm run dev
+```
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+## Cloudflare D1 Setup
 
-## Expanding the ESLint configuration
+1. Log in to Cloudflare:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npx wrangler login
+```
+
+2. Create the D1 database:
+
+```bash
+npx wrangler d1 create workout_coach
+```
+
+3. Copy the returned `database_id` into `wrangler.toml`:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "workout_coach"
+database_id = "YOUR_REAL_DATABASE_ID"
+```
+
+4. Apply migrations locally first:
+
+```bash
+npm run d1:migrate:local
+```
+
+5. Apply migrations to Cloudflare:
+
+```bash
+npm run d1:migrate:remote
+```
+
+## Worker Dev
+
+Run the Worker locally in one terminal:
+
+```bash
+npm run cf:dev
+```
+
+Run Vite in another terminal:
+
+```bash
+npm run dev
+```
+
+Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
+
+## Production Deploy
+
+Deploy the Worker:
+
+```bash
+npm run cf:deploy
+```
+
+Then paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or set:
+
+```bash
+VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
+```
+
+## API Routes
+
+- `GET /api/health`
+- `GET /api/snapshot`
+- `POST /api/logs`
+- `POST /api/sessions`
+
+## Notes
+
+- Session metadata stored in D1 includes notes, available weights, warmup completion, and stretch completion.
+- Local development can still run with no backend; sync is optional.

@@ -364,6 +364,18 @@ function normalizeApiBase(url = "") {
   return url.trim().replace(/\/$/, "");
 }
 
+function getSyncApiBase(url = "") {
+  const normalized = normalizeApiBase(url);
+  if (normalized) return normalized;
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") return "";
+  }
+
+  return null;
+}
+
 function speak(text, enabled) {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
@@ -470,8 +482,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const apiBase = normalizeApiBase(state.syncApiUrl);
-    if (!apiBase) return;
+    const apiBase = getSyncApiBase(state.syncApiUrl);
+    if (apiBase === null) return;
 
     let cancelled = false;
 
@@ -687,6 +699,10 @@ export default function App() {
       dayType: state.dayType,
       durationMinutes: currentSessionDurationMinutes(),
       setsCompleted: state.logs.filter((x) => x.sessionId === state.sessionId).length,
+      note: state.todayNote,
+      availableWeights: state.availableWeights,
+      warmupCompleted: state.warmupDone,
+      stretchCompleted: true,
     };
 
     updateState({
@@ -724,8 +740,8 @@ export default function App() {
   };
 
   const syncSessionToCloudflare = async (sessionRecord) => {
-    const apiBase = normalizeApiBase(state.syncApiUrl);
-    if (!apiBase) return;
+    const apiBase = getSyncApiBase(state.syncApiUrl);
+    if (apiBase === null) return;
 
     try {
       setSyncStatus("Saving session to Cloudflare...");
@@ -745,8 +761,8 @@ export default function App() {
     const nextLogs = [...state.logs, entry];
     updateState({ logs: nextLogs });
 
-    const apiBase = normalizeApiBase(state.syncApiUrl);
-    if (!apiBase) return;
+    const apiBase = getSyncApiBase(state.syncApiUrl);
+    if (apiBase === null) return;
     try {
       setSyncStatus("Saving set to Cloudflare...");
       const response = await fetch(`${apiBase}/api/logs`, {
@@ -1011,7 +1027,7 @@ export default function App() {
                     value={state.syncApiUrl}
                     onChange={(e) => updateState({ syncApiUrl: e.target.value })}
                   />
-                  <p className="mt-1 text-xs font-semibold">Paste your Cloudflare Worker base URL here to sync logs and history into D1. Leave blank for local-only mode.</p>
+                  <p className="mt-1 text-xs font-semibold">Paste your Cloudflare Worker base URL here for production sync. In local dev, leaving this blank uses the proxied `/api` Worker automatically.</p>
                   {syncUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That still looks like a spreadsheet link. This field should point to your Worker URL.</p>}
                 </div>
 
@@ -1303,6 +1319,9 @@ export default function App() {
                     <div className="history-session-head">
                       <div className="text-lg font-black">{session.date} • {session.program}</div>
                       <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets</div>
+                      <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
+                      {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
+                      {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
                     </div>
                     <div className="history-exercise-list">
                       {session.exercises.map((exercise) => (
