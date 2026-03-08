@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
@@ -7,425 +7,33 @@ import { HeroHeader } from "./components/HeroHeader";
 import { HistoryTab } from "./components/HistoryTab";
 import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
-
-const STORAGE_KEY = "yvan-workout-coach-v2";
-const DEFAULT_REST_SECONDS = 30;
-const PLAYFUL_LINES = {
-  sessionStart: ["Warm up first. Let us get you moving.", "Warm up first. Nice and easy to start."],
-  warmup: ["Easy now. Loosen everything up.", "Nice and smooth. Wake the body up.", "Good. Take your time here."],
-  firstExercise: ["First exercise. Let us go.", "First exercise. Stay smooth and strong."],
-  nextExercise: ["Next exercise. Keep that momentum.", "Next exercise. You are doing great.", "Alright, next one. Stay with me."],
-  sessionComplete: ["Session complete. Nice work.", "Session complete. You crushed that."],
-  stretch: ["Workout complete. Finish with stretches.", "Nice work. Finish strong with stretches."],
-  stretchCue: ["Slow it down now.", "Nice and easy here.", "Breathe and let go of the tension."],
-  restDone: ["Rest over. Back to it.", "Rest over. Let us go again."],
-  repPraise: ["Nice.", "Good.", "Strong.", "That is it."],
-  repPush: ["Stay with it.", "Keep it smooth.", "One more clean one.", "You have got this."],
-  phaseUp: ["Up.", "Lift.", "Drive up."],
-  phaseTwo: ["Two.", "And two."],
-  phaseHold: ["Hold.", "Stay there."],
-  phaseLower: ["Lower.", "Ease down."],
-  phaseThree: ["Three.", "Nice and slow."],
-  phaseWait: ["Reset.", "Breathe.", "Stay with it."],
-};
-const SHEET_HEADERS = [
-  "timestamp",
-  "date",
-  "program",
-  "dayType",
-  "exercise",
-  "setNumber",
-  "target",
-  "completed",
-  "isTime",
-  "weightGuide",
-  "tempo",
-  "rest",
-  "sessionId",
-  "durationMinutes",
-];
-
-const PROGRAMS = {
-  "General 1-6kg": {
-    description: "Balanced full-body plan using your available dumbbells.",
-    A: [
-      { name: "Chair Squat", sets: 3, reps: 12, weight: "8-12 kg total", tempo: "3-1-2", rest: 60, cues: ["Chest up", "Sit back", "Drive through feet"] },
-      { name: "DB Chest Press", sets: 3, reps: 12, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Shoulders down", "Lower with control", "Exhale on press"] },
-      { name: "DB Row", sets: 3, reps: 12, weight: "6-12 kg total", tempo: "2-1-2", rest: 60, cues: ["Flat back", "Pull elbow to hip", "Pause at top"] },
-      { name: "Plank", sets: 3, reps: 30, weight: "Bodyweight", tempo: "Hold", rest: 45, isTime: true, cues: ["Ribs down", "Squeeze glutes", "Breathe slowly"] },
-    ],
-    B: [
-      { name: "Split Squat", sets: 3, reps: 10, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Stay tall", "Front heel down", "Shorten range if needed"] },
-      { name: "Shoulder Press", sets: 3, reps: 10, weight: "4-8 kg total", tempo: "2-1-2", rest: 60, cues: ["Brace core", "No leaning back", "Smooth lockout"] },
-      { name: "Biceps Curl", sets: 3, reps: 12, weight: "4-8 kg total", tempo: "3-1-2", rest: 45, cues: ["Elbows still", "No swinging", "Slow lowering"] },
-      { name: "Triceps Extension", sets: 3, reps: 12, weight: "4-8 kg total", tempo: "3-1-2", rest: 45, cues: ["Upper arms stable", "Full stretch", "Controlled finish"] },
-      { name: "Calf Raise", sets: 3, reps: 15, weight: "Bodyweight or 4-8 kg total", tempo: "2-1-2", rest: 30, cues: ["Pause high", "Slow down", "Use wall if needed"] },
-    ],
-    C: [
-      { name: "Goblet Squat", sets: 3, reps: 12, weight: "8-12 kg total", tempo: "3-1-2", rest: 60, cues: ["Hold dumbbell close", "Knees track toes", "Stand tall"] },
-      { name: "Floor Press", sets: 3, reps: 12, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Press evenly", "Touch elbows lightly", "Exhale up"] },
-      { name: "DB Row", sets: 3, reps: 12, weight: "6-12 kg total", tempo: "2-1-2", rest: 60, cues: ["Neck neutral", "Pull to hip", "Control lowering"] },
-      { name: "Lateral Raise", sets: 2, reps: 15, weight: "2-4 kg total", tempo: "2-1-3", rest: 45, cues: ["Soft elbows", "Raise to shoulder height", "Do not shrug"] },
-      { name: "Bicycle Crunch", sets: 3, reps: 15, weight: "Bodyweight", tempo: "Controlled", rest: 30, cues: ["Slow twist", "Exhale as you rotate", "Do not pull neck"] },
-    ],
-  },
-  "Hypertrophy 1-6kg": {
-    description: "Higher reps and slower tempo to get more out of light weights.",
-    A: [
-      { name: "Goblet Squat", sets: 4, reps: 20, weight: "8-12 kg total", tempo: "4-1-2", rest: 60, cues: ["Slow lowering", "Own the pause", "Stand hard"] },
-      { name: "DB Chest Press", sets: 4, reps: 20, weight: "6-10 kg total", tempo: "4-1-2", rest: 60, cues: ["Constant tension", "No bouncing", "Press strong"] },
-      { name: "DB Row", sets: 4, reps: 20, weight: "6-12 kg total", tempo: "3-1-2", rest: 60, cues: ["Pause and squeeze", "Keep hips square", "Slow return"] },
-      { name: "Biceps Curl", sets: 3, reps: 20, weight: "4-8 kg total", tempo: "3-1-3", rest: 45, cues: ["Lift smoothly", "Slow negative", "Stay strict"] },
-      { name: "Plank", sets: 3, reps: 45, weight: "Bodyweight", tempo: "Hold", rest: 45, isTime: true, cues: ["Brace abs", "Long neck", "Quiet breathing"] },
-    ],
-    B: [
-      { name: "Reverse Lunge", sets: 4, reps: 15, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Step back softly", "Tall torso", "Drive forward"] },
-      { name: "Shoulder Press", sets: 4, reps: 15, weight: "4-8 kg total", tempo: "3-1-2", rest: 60, cues: ["Core tight", "Smooth path", "No shrugging"] },
-      { name: "Lateral Raise", sets: 4, reps: 20, weight: "2-4 kg total", tempo: "2-1-3", rest: 45, cues: ["Lead with elbows", "Stop at shoulder level", "Slow down"] },
-      { name: "Overhead Triceps Extension", sets: 3, reps: 20, weight: "2-6 kg total", tempo: "3-1-3", rest: 45, cues: ["Full stretch", "Keep elbows tucked", "Smooth finish"] },
-      { name: "Calf Raise", sets: 4, reps: 20, weight: "Bodyweight or 4-8 kg total", tempo: "3-1-2", rest: 30, cues: ["Pause top", "Slow bottom", "Stay balanced"] },
-    ],
-    C: [
-      { name: "Split Squat", sets: 4, reps: 15, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Use support if needed", "Descend slowly", "Drive evenly"] },
-      { name: "Floor Press", sets: 3, reps: 20, weight: "6-10 kg total", tempo: "3-1-2", rest: 60, cues: ["Controlled press", "Light elbow touch", "Keep wrists straight"] },
-      { name: "DB Row", sets: 3, reps: 20, weight: "6-12 kg total", tempo: "3-1-2", rest: 60, cues: ["Brace trunk", "Pull clean", "Return slowly"] },
-      { name: "Hammer Curl", sets: 3, reps: 20, weight: "4-8 kg total", tempo: "3-1-3", rest: 45, cues: ["Neutral grip", "No body swing", "Long lowering"] },
-      { name: "Bicycle Crunch", sets: 3, reps: 20, weight: "Bodyweight", tempo: "Controlled", rest: 30, cues: ["Move slowly", "Twist through trunk", "Breathe out"] },
-    ],
-  },
-  "Sandow 5lb": {
-    description: "A lighter classical routine inspired by early physical culture.",
-    A: [
-      { name: "Biceps Curl", sets: 2, reps: 50, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Full control", "No momentum", "Rhythmic breathing"] },
-      { name: "Reverse Curl", sets: 2, reps: 25, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Palms down", "Elbows quiet", "Smooth rhythm"] },
-      { name: "Lateral Raise", sets: 2, reps: 20, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Lift clean", "No shrug", "Control down"] },
-      { name: "Chair Squat", sets: 2, reps: 20, weight: "Bodyweight", tempo: "Smooth", rest: 30, cues: ["Stand tall", "Easy rhythm", "Do not rush"] },
-      { name: "Calf Raise", sets: 2, reps: 30, weight: "Bodyweight", tempo: "Smooth", rest: 30, cues: ["Rise fully", "Pause top", "Smooth lower"] },
-    ],
-    B: [
-      { name: "Shoulder Press", sets: 2, reps: 25, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Smooth arc", "Core tight", "Steady breathing"] },
-      { name: "Front Raise", sets: 2, reps: 15, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Shoulder height only", "No swing", "Lower slow"] },
-      { name: "DB Row", sets: 2, reps: 20, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Pull clean", "Pause top", "Stay long through spine"] },
-      { name: "Side Bend", sets: 2, reps: 20, weight: "2.3 kg in one hand", tempo: "Controlled", rest: 30, cues: ["Small range", "Do not collapse", "Move gently"] },
-      { name: "Push-Up", sets: 2, reps: 10, weight: "Bodyweight", tempo: "Controlled", rest: 30, cues: ["Elevate hands if needed", "Body straight", "Smooth press"] },
-    ],
-    C: [
-      { name: "Biceps Curl", sets: 1, reps: 50, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Long set", "Stay calm", "Smooth rhythm"] },
-      { name: "Lateral Raise", sets: 1, reps: 20, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Strict motion", "No shrugging", "Lower softly"] },
-      { name: "Shoulder Press", sets: 1, reps: 25, weight: "2.3 kg each hand", tempo: "Smooth", rest: 30, cues: ["Steady pace", "Brace lightly", "Exhale up"] },
-      { name: "Pullover", sets: 1, reps: 20, weight: "2.3 kg total", tempo: "Smooth", rest: 30, cues: ["Gentle arc", "No shoulder pain", "Keep ribs quiet"] },
-      { name: "Chair Squat", sets: 1, reps: 25, weight: "Bodyweight", tempo: "Smooth", rest: 30, cues: ["Comfortable range", "Rhythmic pace", "Stand tall"] },
-    ],
-  },
-  "Testosterone 50+": {
-    description: "A strength-focused plan built around larger muscle groups and recovery habits after 50.",
-    A: [
-      { name: "Goblet Squat", sets: 3, reps: 10, weight: "10-12 kg total", tempo: "2-1-2", rest: 90, cues: ["Use your heaviest safe load", "Stand hard", "Control depth"] },
-      { name: "DB Row", sets: 3, reps: 10, weight: "8-12 kg total", tempo: "2-1-2", rest: 90, cues: ["Strong pull", "Pause top", "Own the lowering"] },
-      { name: "DB Chest Press", sets: 3, reps: 10, weight: "8-12 kg total", tempo: "2-1-2", rest: 90, cues: ["Big exhale up", "Keep shoulders packed", "Move cleanly"] },
-      { name: "Farmer Carry", sets: 3, reps: 40, weight: "10-12 kg total", tempo: "Walk", rest: 60, isTime: true, cues: ["Walk tall", "Tight grip", "Slow breathing"] },
-      { name: "Plank", sets: 3, reps: 30, weight: "Bodyweight", tempo: "Hold", rest: 45, isTime: true, cues: ["Brace firm", "Long spine", "Do not sag"] },
-    ],
-    B: [
-      { name: "Step-Up", sets: 3, reps: 10, weight: "6-10 kg total", tempo: "2-1-2", rest: 90, cues: ["Stable foot", "Drive through heel", "Control down"] },
-      { name: "Shoulder Press", sets: 3, reps: 10, weight: "6-10 kg total", tempo: "2-1-2", rest: 90, cues: ["Core tight", "No lean", "Press smoothly"] },
-      { name: "Biceps Curl", sets: 2, reps: 12, weight: "4-8 kg total", tempo: "2-1-2", rest: 60, cues: ["No swinging", "Elbows stable", "Slow down"] },
-      { name: "Triceps Extension", sets: 2, reps: 12, weight: "4-8 kg total", tempo: "2-1-2", rest: 60, cues: ["Upper arms stay fixed", "Smooth stretch", "Controlled finish"] },
-      { name: "Walk / March", sets: 1, reps: 1200, weight: "Bodyweight", tempo: "Zone 2", rest: 0, isTime: true, cues: ["Nasal breathing if possible", "Keep moving", "Easy steady pace"] },
-    ],
-    C: [
-      { name: "Split Squat", sets: 3, reps: 10, weight: "6-10 kg total", tempo: "2-1-2", rest: 90, cues: ["Stay tall", "Use support if needed", "Controlled pace"] },
-      { name: "Floor Press", sets: 3, reps: 10, weight: "8-12 kg total", tempo: "2-1-2", rest: 90, cues: ["Even press", "Wrist straight", "Own the lowering"] },
-      { name: "DB Row", sets: 3, reps: 10, weight: "8-12 kg total", tempo: "2-1-2", rest: 90, cues: ["Pull to hip", "No twisting", "Stay strict"] },
-      { name: "Calf Raise", sets: 3, reps: 15, weight: "Bodyweight or 4-8 kg total", tempo: "2-1-2", rest: 45, cues: ["Full range", "Pause top", "Slow descent"] },
-      { name: "Plank", sets: 3, reps: 40, weight: "Bodyweight", tempo: "Hold", rest: 45, isTime: true, cues: ["Firm brace", "Quiet breathing", "Long body line"] },
-    ],
-  },
-};
-
-const DEFAULT_STATE = {
-  activeProgram: "General 1-6kg",
-  dayType: "A",
-  exerciseIndex: 0,
-  currentSet: 1,
-  currentRep: 0,
-  setDurationRemaining: 0,
-  setTimerRunning: false,
-  restRemaining: 0,
-  restTimerRunning: false,
-  warmupDone: false,
-  sessionStartedAt: null,
-  sessionId: null,
-  logs: [],
-  syncApiUrl: import.meta.env.VITE_SYNC_API_URL || "",
-  soundEnabled: true,
-  installReady: false,
-  history: [],
-  todayNote: "",
-  activeTab: "today",
-  availableWeights: "1, 2, 3, 4, 5, 6",
-  sessionStage: "idle",
-  stretchDone: false,
-  repGuideRunning: false,
-  repGuidePhaseIndex: 0,
-  repGuidePhaseRemaining: 0,
-  repGuideSide: "left",
-};
-
-const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
-const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif"];
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...DEFAULT_STATE, ...JSON.parse(raw) } : DEFAULT_STATE;
-  } catch {
-    return DEFAULT_STATE;
-  }
-}
-
-function formatSeconds(total) {
-  const safe = Math.max(0, Number(total) || 0);
-  const mins = Math.floor(safe / 60);
-  const secs = safe % 60;
-  return `${mins}:${String(secs).padStart(2, "0")}`;
-}
-
-function todayDateLabel() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
-
-function getNextDayType(current) {
-  if (current === "A") return "B";
-  if (current === "B") return "C";
-  return "A";
-}
-
-function isAlternateExercise(name = "") {
-  return /(split squat|reverse lunge|step-up|side bend|bicycle crunch)/i.test(name);
-}
-
-function parseAvailableWeights(input = "") {
-  return input
-    .split(",")
-    .map((value) => Number.parseFloat(value.trim()))
-    .filter((value) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b);
-}
-
-function chooseClosest(values, target) {
-  return values.reduce((best, current) => (
-    Math.abs(current - target) < Math.abs(best - target) ? current : best
-  ), values[0]);
-}
-
-function resolveWeightGuide(guide, availableWeightsInput) {
-  const availableWeights = parseAvailableWeights(availableWeightsInput);
-  const hasBodyweight = /bodyweight/i.test(guide);
-
-  if (!availableWeights.length) return guide;
-
-  const totalRangeMatch = guide.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*kg total/i);
-  if (totalRangeMatch) {
-    const min = Number.parseFloat(totalRangeMatch[1]);
-    const max = Number.parseFloat(totalRangeMatch[2]);
-    const pairOptions = availableWeights.map((weight) => ({ single: weight, total: weight * 2 }));
-    const inRange = pairOptions.filter((option) => option.total >= min && option.total <= max);
-    const pick = inRange.at(-1) || pairOptions.reduce((best, option) => (
-      Math.abs(option.total - (min + max) / 2) < Math.abs(best.total - (min + max) / 2) ? option : best
-    ), pairOptions[0]);
-
-    const resolved = `${pick.single} kg each hand (${pick.total} kg total)`;
-    return hasBodyweight ? `Bodyweight or ${resolved}` : resolved;
-  }
-
-  const eachHandMatch = guide.match(/(\d+(?:\.\d+)?)\s*kg each hand/i);
-  if (eachHandMatch) {
-    const target = Number.parseFloat(eachHandMatch[1]);
-    const pick = chooseClosest(availableWeights, target);
-    return `${pick} kg each hand`;
-  }
-
-  const oneHandMatch = guide.match(/(\d+(?:\.\d+)?)\s*kg in one hand/i);
-  if (oneHandMatch) {
-    const target = Number.parseFloat(oneHandMatch[1]);
-    const pick = chooseClosest(availableWeights, target);
-    return `${pick} kg in one hand`;
-  }
-
-  if (hasBodyweight) return "Bodyweight";
-
-  return guide;
-}
-
-function slugifyExerciseName(name = "") {
-  return name
-    .toLowerCase()
-    .replaceAll("/", "-")
-    .replaceAll(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function getExerciseReferenceImage(name = "") {
-  const slug = slugifyExerciseName(name);
-
-  return `/exercise-reference/${slug}.svg`;
-}
-
-function getExerciseReferenceImageCandidates(name = "") {
-  const slug = slugifyExerciseName(name);
-
-  const imported = IMPORTED_IMAGE_EXTENSIONS.map((ext) => `/exercise-reference/imported/${slug}.${ext}`);
-  return [...imported, getExerciseReferenceImage(name)];
-}
-
-function getWeightTotalKg(weightGuide = "") {
-  const totalMatch = weightGuide.match(/\((\d+(?:\.\d+)?)\s*kg total\)/i) || weightGuide.match(/(\d+(?:\.\d+)?)\s*kg total/i);
-  if (totalMatch) return Number.parseFloat(totalMatch[1]) || 0;
-
-  const eachHandMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg each hand/i);
-  if (eachHandMatch) return (Number.parseFloat(eachHandMatch[1]) || 0) * 2;
-
-  const oneHandMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg in one hand/i);
-  if (oneHandMatch) return Number.parseFloat(oneHandMatch[1]) || 0;
-
-  const singleKgMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg/i);
-  if (singleKgMatch && !/bodyweight/i.test(weightGuide)) return Number.parseFloat(singleKgMatch[1]) || 0;
-
-  return 0;
-}
-
-function summarizeSessionLogs(logs, sessions) {
-  const logsBySession = logs.reduce((acc, log) => {
-    const sessionId = log.sessionId || `${log.date}-${log.program}-${log.dayType}`;
-    if (!acc[sessionId]) acc[sessionId] = [];
-    acc[sessionId].push(log);
-    return acc;
-  }, {});
-
-  const grouped = sessions.map((session) => {
-    if (Array.isArray(session.exercises) && session.exercises.length) {
-      return {
-        ...session,
-        totalKg: session.totalKg ?? session.exercises.reduce((sum, exercise) => sum + (exercise.totalKg || 0), 0),
-        totalCompleted: session.totalCompleted ?? session.exercises.reduce((sum, exercise) => sum + (exercise.completed || 0), 0),
-      };
-    }
-
-    const sessionLogs = logsBySession[session.sessionId] || [];
-    const byExercise = sessionLogs.reduce((acc, log) => {
-      const key = log.exercise;
-      if (!acc[key]) {
-        acc[key] = {
-          exercise: log.exercise,
-          sets: 0,
-          completed: 0,
-          target: log.target,
-          isTime: log.isTime,
-          totalKg: 0,
-        };
-      }
-      acc[key].sets += 1;
-      acc[key].completed += Number(log.completed) || 0;
-      acc[key].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
-      return acc;
-    }, {});
-
-    const exercises = Object.values(byExercise);
-    return {
-      ...session,
-      exercises,
-      totalKg: exercises.reduce((sum, exercise) => sum + exercise.totalKg, 0),
-      totalCompleted: exercises.reduce((sum, exercise) => sum + exercise.completed, 0),
-    };
-  });
-
-  if (grouped.length) return grouped;
-
-  const fallbackGrouped = Object.values(logs.reduce((acc, log) => {
-    const sessionId = log.sessionId || `${log.date}-${log.program}-${log.dayType}`;
-    if (!acc[sessionId]) {
-      acc[sessionId] = {
-        sessionId,
-        date: log.date,
-        program: log.program,
-        dayType: log.dayType,
-        durationMinutes: log.durationMinutes,
-        setsCompleted: 0,
-        exercises: [],
-        totalKg: 0,
-        totalCompleted: 0,
-      };
-    }
-    acc[sessionId].setsCompleted += 1;
-    const existing = acc[sessionId].exercises.find((item) => item.exercise === log.exercise);
-    if (existing) {
-      existing.sets += 1;
-      existing.completed += Number(log.completed) || 0;
-      existing.totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
-    } else {
-      acc[sessionId].exercises.push({
-        exercise: log.exercise,
-        sets: 1,
-        completed: Number(log.completed) || 0,
-        target: log.target,
-        isTime: log.isTime,
-        totalKg: (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide),
-      });
-    }
-    acc[sessionId].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
-    acc[sessionId].totalCompleted += Number(log.completed) || 0;
-    return acc;
-  }, {}));
-
-  return fallbackGrouped.slice().reverse();
-}
-
-function confirmAction(message, callback) {
-  if (typeof window === "undefined" || window.confirm(message)) {
-    callback();
-  }
-}
-
-function normalizeApiBase(url = "") {
-  return url.trim().replace(/\/$/, "");
-}
-
-function getSyncApiBase(url = "") {
-  const normalized = normalizeApiBase(url);
-  if (normalized) return normalized;
-
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") return "";
-  }
-
-  return null;
-}
-
-function getSyncHeaders(includeJson = false) {
-  const headers = {};
-  const token = import.meta.env.VITE_SYNC_API_TOKEN;
-  if (includeJson) headers["Content-Type"] = "application/json";
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
-}
-
-function pickLine(lines, seed = 0) {
-  if (!lines?.length) return "";
-  return lines[seed % lines.length];
-}
-
-function getPhaseCue(phase, seed = 0) {
-  if (phase === "Up") return pickLine(PLAYFUL_LINES.phaseUp, seed);
-  if (phase === "2") return pickLine(PLAYFUL_LINES.phaseTwo, seed);
-  if (phase === "Hold") return pickLine(PLAYFUL_LINES.phaseHold, seed);
-  if (phase === "Lower") return pickLine(PLAYFUL_LINES.phaseLower, seed);
-  if (phase === "3") return pickLine(PLAYFUL_LINES.phaseThree, seed);
-  if (phase === "Wait") return pickLine(PLAYFUL_LINES.phaseWait, seed);
-  return phase;
-}
+import { useInstallPrompt } from "./hooks/useInstallPrompt";
+import { usePersistentState } from "./hooks/usePersistentState";
+import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
+import {
+  DEFAULT_REST_SECONDS,
+  DEFAULT_STATE,
+  PLAYFUL_LINES,
+  PROGRAMS,
+  REP_PHASES,
+  SHEET_HEADERS,
+  STORAGE_KEY,
+} from "./lib/workoutData";
+import {
+  confirmAction,
+  downloadCsv,
+  formatSeconds,
+  getExerciseReferenceImageCandidates,
+  getNextDayType,
+  getPhaseCue,
+  getSyncApiBase,
+  isAlternateExercise,
+  loadState,
+  pickLine,
+  resolveWeightGuide,
+  summarizeSessionLogs,
+  todayDateLabel,
+} from "./lib/workoutUtils";
 
 function speakWithStyle(text, enabled, mode = "default") {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -457,22 +65,6 @@ function speakWithStyle(text, enabled, mode = "default") {
   window.speechSynthesis.speak(utterance);
 }
 
-function csvEscape(value) {
-  const v = String(value ?? "");
-  return `"${v.replaceAll('"', '""')}"`;
-}
-
-function downloadCsv(filename, rows) {
-  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 async function runHaptic(type = "light") {
   try {
     if (type === "success") {
@@ -491,47 +83,30 @@ async function runHaptic(type = "light") {
 }
 
 export default function App() {
-  const [state, setState] = useState(loadState);
+  const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
   const [syncStatus, setSyncStatus] = useState("");
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [exerciseImageIndex, setExerciseImageIndex] = useState(0);
+  const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
+  const { installApp, installReady } = useInstallPrompt();
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  useEffect(() => {
-    const onBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setState((prev) => ({ ...prev, installReady: true }));
-    };
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-  }, []);
-
-  useEffect(() => {
-    const apiBase = getSyncApiBase(state.syncApiUrl);
-    if (apiBase === null) return;
+    const syncTarget = getSyncApiBase(state.syncApiUrl);
+    if (syncTarget === null) return;
 
     let cancelled = false;
 
     async function loadRemoteSnapshot() {
       try {
         setSyncStatus("Loading Cloudflare sync...");
-        const response = await fetch(`${apiBase}/api/history-summary`, { headers: getSyncHeaders() });
-        if (!response.ok) throw new Error("history summary failed");
-
-        const payload = await response.json();
+        const result = await loadHistorySummary(state.syncApiUrl);
         if (cancelled) return;
 
         setState((prev) => ({
           ...prev,
-          history: Array.isArray(payload.history) ? payload.history : prev.history,
+          history: Array.isArray(result.data?.history) ? result.data.history : prev.history,
         }));
         setSyncStatus("Cloudflare sync connected");
       } catch {
@@ -544,7 +119,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [state.syncApiUrl]);
+  }, [state.syncApiUrl, setState]);
 
   useEffect(() => {
     if (state.setTimerRunning && state.setDurationRemaining > 0) {
@@ -559,7 +134,7 @@ export default function App() {
       }, 1000);
     }
     return () => clearInterval(setTimerRef.current);
-  }, [state.setTimerRunning, state.setDurationRemaining, state.soundEnabled]);
+  }, [state.setTimerRunning, state.setDurationRemaining, state.soundEnabled, setState]);
 
   useEffect(() => {
     if (state.restTimerRunning && state.restRemaining > 0) {
@@ -574,7 +149,7 @@ export default function App() {
       }, 1000);
     }
     return () => clearInterval(restTimerRef.current);
-  }, [state.restTimerRunning, state.restRemaining, state.soundEnabled]);
+  }, [state.restTimerRunning, state.restRemaining, state.soundEnabled, setState]);
 
   useEffect(() => {
     if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
@@ -641,7 +216,7 @@ export default function App() {
     }, 1000);
 
     return () => clearTimeout(repGuideRef.current);
-  }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex]);
+  }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex, setState]);
 
   const exercises = useMemo(() => PROGRAMS[state.activeProgram][state.dayType] || [], [state.activeProgram, state.dayType]);
   const currentProgramMeta = useMemo(() => PROGRAMS[state.activeProgram], [state.activeProgram]);
@@ -666,7 +241,8 @@ export default function App() {
   const activeThemeClass = `${state.activeTab}-theme`;
   const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
   const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
-  const currentExerciseImage = currentExerciseImages[exerciseImageIndex] || currentExerciseImages.at(-1) || "";
+  const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
+  const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(state.logs, state.history).slice(0, 8), [state.logs, state.history]);
   const repGuideLabel = currentExercise?.isTime
     ? ""
@@ -684,9 +260,69 @@ export default function App() {
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
 
-  useEffect(() => {
-    setExerciseImageIndex(0);
-  }, [currentExercise?.name]);
+  const handleExerciseImageError = () => {
+    if (!currentExercise) return;
+    setExerciseImageIndexes((prev) => ({
+      ...prev,
+      [currentExercise.name]: Math.min((prev[currentExercise.name] || 0) + 1, currentExerciseImages.length - 1),
+    }));
+  };
+
+  const currentSessionDurationMinutes = () => {
+    if (!state.sessionStartedAt) return "";
+    return Math.max(1, Math.round((Date.now() - new Date(state.sessionStartedAt).getTime()) / 60000));
+  };
+
+  const syncSessionToCloudflare = async (sessionRecord) => {
+    try {
+      setSyncStatus("Saving session to Cloudflare...");
+      const result = await createRemoteSession(state.syncApiUrl, sessionRecord);
+      if (result.skipped) return;
+      setSyncStatus("Synced with Cloudflare");
+    } catch {
+      setSyncStatus("Cloudflare sync failed. Local save only.");
+    }
+  };
+
+  const deleteSessionRemote = async (sessionId) => {
+    try {
+      setSyncStatus("Deleting session from Cloudflare...");
+      const result = await deleteRemoteSession(state.syncApiUrl, sessionId);
+      if (result.skipped) return true;
+      setSyncStatus("Session deleted from Cloudflare");
+      return true;
+    } catch {
+      setSyncStatus("Cloudflare delete failed. Local session removed.");
+      return false;
+    }
+  };
+
+  const updateSessionRemote = async (sessionId, sessionPatch) => {
+    try {
+      setSyncStatus("Updating session in Cloudflare...");
+      const result = await updateRemoteSession(state.syncApiUrl, sessionId, sessionPatch);
+      if (result.skipped) return true;
+      setSyncStatus("Session updated in Cloudflare");
+      return true;
+    } catch {
+      setSyncStatus("Cloudflare update failed. Local session updated.");
+      return false;
+    }
+  };
+
+  const saveSetLocally = async (entry) => {
+    const nextLogs = [...state.logs, entry];
+    updateState({ logs: nextLogs });
+
+    try {
+      setSyncStatus("Saving set to Cloudflare...");
+      const result = await createRemoteLog(state.syncApiUrl, entry);
+      if (result.skipped) return;
+      setSyncStatus("Synced with Cloudflare");
+    } catch {
+      setSyncStatus("Cloudflare sync failed. Local save only.");
+    }
+  };
 
   const startSession = () => {
     const sessionId = `${Date.now()}`;
@@ -771,96 +407,6 @@ export default function App() {
     syncSessionToCloudflare(sessionRecord);
     runHaptic("success");
     speakWithStyle(pickLine(PLAYFUL_LINES.sessionComplete, state.history.length), state.soundEnabled, "stretch");
-  };
-
-  const installApp = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    updateState({ installReady: false });
-  };
-
-  const syncSessionToCloudflare = async (sessionRecord) => {
-    const apiBase = getSyncApiBase(state.syncApiUrl);
-    if (apiBase === null) return;
-
-    try {
-      setSyncStatus("Saving session to Cloudflare...");
-      const response = await fetch(`${apiBase}/api/sessions`, {
-        method: "POST",
-        headers: getSyncHeaders(true),
-        body: JSON.stringify(sessionRecord),
-      });
-      if (!response.ok) throw new Error("session sync failed");
-      setSyncStatus("Synced with Cloudflare");
-    } catch {
-      setSyncStatus("Cloudflare sync failed. Local save only.");
-    }
-  };
-
-  const deleteSessionRemote = async (sessionId) => {
-    const apiBase = getSyncApiBase(state.syncApiUrl);
-    if (apiBase === null) return true;
-
-    try {
-      setSyncStatus("Deleting session from Cloudflare...");
-      const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
-        method: "DELETE",
-        headers: getSyncHeaders(),
-      });
-      if (!response.ok) throw new Error("delete failed");
-      setSyncStatus("Session deleted from Cloudflare");
-      return true;
-    } catch {
-      setSyncStatus("Cloudflare delete failed. Local session removed.");
-      return false;
-    }
-  };
-
-  const updateSessionRemote = async (sessionId, sessionPatch) => {
-    const apiBase = getSyncApiBase(state.syncApiUrl);
-    if (apiBase === null) return true;
-
-    try {
-      setSyncStatus("Updating session in Cloudflare...");
-      const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: getSyncHeaders(true),
-        body: JSON.stringify(sessionPatch),
-      });
-      if (!response.ok) throw new Error("update failed");
-      setSyncStatus("Session updated in Cloudflare");
-      return true;
-    } catch {
-      setSyncStatus("Cloudflare update failed. Local session updated.");
-      return false;
-    }
-  };
-
-  const saveSetLocally = async (entry) => {
-    const nextLogs = [...state.logs, entry];
-    updateState({ logs: nextLogs });
-
-    const apiBase = getSyncApiBase(state.syncApiUrl);
-    if (apiBase === null) return;
-    try {
-      setSyncStatus("Saving set to Cloudflare...");
-      const response = await fetch(`${apiBase}/api/logs`, {
-        method: "POST",
-        headers: getSyncHeaders(true),
-        body: JSON.stringify(entry),
-      });
-      if (!response.ok) throw new Error("sync failed");
-      setSyncStatus("Synced with Cloudflare");
-    } catch {
-      setSyncStatus("Cloudflare sync failed. Local save only.");
-    }
-  };
-
-  const currentSessionDurationMinutes = () => {
-    if (!state.sessionStartedAt) return "";
-    return Math.max(1, Math.round((Date.now() - new Date(state.sessionStartedAt).getTime()) / 60000));
   };
 
   const moveToNextStage = (restSeconds) => {
@@ -965,14 +511,14 @@ export default function App() {
   };
 
   const exportLogs = () => {
-    const rows = [SHEET_HEADERS, ...state.logs.map((log) => SHEET_HEADERS.map((h) => log[h] ?? ""))];
+    const rows = [SHEET_HEADERS, ...state.logs.map((log) => SHEET_HEADERS.map((header) => log[header] ?? ""))];
     downloadCsv(`workout-log-${todayDateLabel()}.csv`, rows);
   };
 
   const clearAllData = () => {
     confirmAction("Clear all local workout data from this device?", () => {
       localStorage.removeItem(STORAGE_KEY);
-      setState(DEFAULT_STATE);
+      setState({ ...DEFAULT_STATE });
       setSyncStatus("");
     });
   };
@@ -1080,6 +626,7 @@ export default function App() {
         {state.activeTab === "today" && (
           <TodayTab
             state={state}
+            installReady={installReady}
             programs={PROGRAMS}
             currentProgramMeta={currentProgramMeta}
             nextWorkout={nextWorkout}
@@ -1103,12 +650,11 @@ export default function App() {
             sessionProgress={sessionProgress}
             resolvedCurrentWeight={resolvedCurrentWeight}
             currentExerciseImage={currentExerciseImage}
-            currentExerciseImages={currentExerciseImages}
             repGuideLabel={repGuideLabel}
             syncStatus={syncStatus}
             formatSeconds={formatSeconds}
             DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
-            setExerciseImageIndex={setExerciseImageIndex}
+            onExerciseImageError={handleExerciseImageError}
             isAlternateExercise={isAlternateExercise}
             updateState={updateState}
             startSession={startSession}
@@ -1136,7 +682,6 @@ export default function App() {
             clearAllData={clearAllData}
           />
         )}
-
       </div>
     </div>
   );

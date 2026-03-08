@@ -14,6 +14,15 @@ npm install
 npm run dev
 ```
 
+Optional frontend env values live in `.env` files. Start from:
+
+```bash
+cp .env.example .env.local
+```
+
+- `VITE_SYNC_API_URL` points the app at your deployed Worker without pasting it into the UI.
+- `VITE_SYNC_API_TOKEN` should match the Worker `API_TOKEN` secret when sync auth is enabled.
+
 ## Cloudflare D1 Setup
 
 1. Log in to Cloudflare:
@@ -51,6 +60,13 @@ npx wrangler secret put API_TOKEN
 ```
 
 6. Add the same token to the frontend build as `VITE_SYNC_API_TOKEN` so the app can send `Authorization: Bearer ...` on sync requests.
+
+Example `.env.local`:
+
+```bash
+VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
+VITE_SYNC_API_TOKEN=your-long-random-token
+```
 
 7. Apply migrations locally first:
 
@@ -106,6 +122,8 @@ Then either:
 - set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
 
 The frontend can also read the bearer token from `VITE_SYNC_API_TOKEN` during production builds.
+
+If you prefer not to hardcode the Worker URL in a build, you can still leave `VITE_SYNC_API_URL` unset and paste the URL into the in-app `Cloudflare sync API URL` field on the device.
 
 ## API Routes
 

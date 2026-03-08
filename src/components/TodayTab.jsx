@@ -3,6 +3,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
   state,
+  installReady,
   programs,
   currentProgramMeta,
   nextWorkout,
@@ -107,7 +108,7 @@ export function TodayTab({
         </CardContent>
       </Card>
 
-      {state.installReady && <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={installApp}><Download className="mr-2 h-5 w-5" /> Install App</Button>}
+      {installReady && <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={installApp}><Download className="mr-2 h-5 w-5" /> Install App</Button>}
     </>
   );
 }

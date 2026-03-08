@@ -8,12 +8,11 @@ export function SessionTab({
   sessionProgress,
   resolvedCurrentWeight,
   currentExerciseImage,
-  currentExerciseImages,
   repGuideLabel,
   syncStatus,
   formatSeconds,
   DEFAULT_REST_SECONDS,
-  setExerciseImageIndex,
+  onExerciseImageError,
   isAlternateExercise,
   updateState,
   startSession,
@@ -123,7 +122,7 @@ export function SessionTab({
             <div className="border-4 border-black rounded-2xl p-3">
               <div className="text-sm font-black mb-2">Coaching cues</div>
               <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
-                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} onError={() => setExerciseImageIndex((prev) => Math.min(prev + 1, currentExerciseImages.length - 1))} />
+                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} onError={onExerciseImageError} />
               </div>
               <ul className="space-y-1">
                 {currentExercise.cues?.map((cue) => (
