@@ -16,6 +16,7 @@ import {
   Clock3,
   ListChecks,
 } from "lucide-react";
+import "./App.css";
 
 const STORAGE_KEY = "yvan-workout-coach-v2";
 const SHEET_HEADERS = [
@@ -207,41 +208,40 @@ function downloadCsv(filename, rows) {
 }
 
 function Card({ className = "", children, ...props }) {
-  return <div className={className} {...props}>{children}</div>;
+  return <div className={`surface ${className}`.trim()} {...props}>{children}</div>;
 }
 
 function CardHeader({ className = "", children, ...props }) {
-  return <div className={className} {...props}>{children}</div>;
+  return <div className={`section-header ${className}`.trim()} {...props}>{children}</div>;
 }
 
 function CardTitle({ className = "", children, ...props }) {
-  return <h2 className={className} {...props}>{children}</h2>;
+  return <h2 className={`section-title ${className}`.trim()} {...props}>{children}</h2>;
 }
 
 function CardContent({ className = "", children, ...props }) {
-  return <div className={className} {...props}>{children}</div>;
+  return <div className={`section-content ${className}`.trim()} {...props}>{children}</div>;
 }
 
 function Button({ className = "", children, ...props }) {
   return (
-    <button className={className} {...props}>
+    <button className={`ui-button ${className}`.trim()} {...props}>
       {children}
     </button>
   );
 }
 
 function Input({ className = "", ...props }) {
-  return <input className={className} {...props} />;
+  return <input className={`ui-input ${className}`.trim()} {...props} />;
 }
 
 function Progress({ value = 0, className = "", ...props }) {
   return (
-    <div className={className} {...props}>
+    <div className={`progress-track ${className}`.trim()} {...props}>
       <div
+        className="progress-fill"
         style={{
           width: `${Math.max(0, Math.min(100, value))}%`,
-          height: "100%",
-          background: "currentColor",
         }}
       />
     </div>
@@ -475,8 +475,8 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black p-3 sm:p-6">
-      <div className="max-w-md mx-auto space-y-4 pb-10">
+    <div className="app-shell min-h-screen bg-white text-black p-3 sm:p-6">
+      <div className="app-stack max-w-md mx-auto space-y-4 pb-10">
         <div className="border-4 border-black rounded-3xl p-4">
           <h1 className="text-3xl font-black tracking-tight">Workout Coach</h1>
           <p className="text-base font-semibold mt-2">Phone-first. Free to deploy. Local-first with optional Google Sheets sync.</p>
