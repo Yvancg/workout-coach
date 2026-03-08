@@ -765,10 +765,6 @@ export default function App() {
     speakWithStyle(`${pickLine(PLAYFUL_LINES.firstExercise, 0)} ${firstExercise?.name || "Begin"}.`, state.soundEnabled, "set");
   };
 
-  const acknowledgeWarmupVideo = () => {
-    speakWithStyle(pickLine(PLAYFUL_LINES.warmup, state.logs.length), state.soundEnabled, "warmup");
-  };
-
   const finishSession = () => {
     const sessionRecord = {
       sessionId: state.sessionId,
@@ -1323,9 +1319,6 @@ export default function App() {
                       allowFullScreen
                     />
                   </div>
-                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={acknowledgeWarmupVideo}>
-                    <Volume2 className="h-5 w-5" /> Warmup Cue
-                  </Button>
                   <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={beginProgramAfterWarmup}>
                     <CheckCircle2 className="mr-2 h-5 w-5" /> Warm Up Done, Start Program
                   </Button>
@@ -1455,9 +1448,6 @@ export default function App() {
                       allowFullScreen
                     />
                   </div>
-                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => speakWithStyle(pickLine(PLAYFUL_LINES.stretchCue, state.history.length), state.soundEnabled, "stretch")}>
-                    <Volume2 className="h-5 w-5" /> Stretch Cue
-                  </Button>
                   <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={finishSession}>
                     <CheckCircle2 className="mr-2 h-5 w-5" /> Stretch Done, Finish Session
                   </Button>
