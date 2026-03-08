@@ -1,0 +1,34 @@
+{
+  "source": "Official ExerciseDB media source, app-scoped cached images only",
+  "notes": [
+    "Import only the exercises actually used by this app.",
+    "Verify ExerciseDB redistribution terms before committing downloaded files.",
+    "Store imported files in public/exercise-reference/imported/ and update THIRD_PARTY_NOTICES.md."
+  ],
+  "exercises": [
+    { "name": "Chair Squat", "slug": "chair-squat", "sourceUrl": "" },
+    { "name": "Goblet Squat", "slug": "goblet-squat", "sourceUrl": "" },
+    { "name": "Split Squat", "slug": "split-squat", "sourceUrl": "" },
+    { "name": "Reverse Lunge", "slug": "reverse-lunge", "sourceUrl": "" },
+    { "name": "Step-Up", "slug": "step-up", "sourceUrl": "" },
+    { "name": "DB Chest Press", "slug": "db-chest-press", "sourceUrl": "" },
+    { "name": "Floor Press", "slug": "floor-press", "sourceUrl": "" },
+    { "name": "DB Row", "slug": "db-row", "sourceUrl": "" },
+    { "name": "Shoulder Press", "slug": "shoulder-press", "sourceUrl": "" },
+    { "name": "Lateral Raise", "slug": "lateral-raise", "sourceUrl": "" },
+    { "name": "Front Raise", "slug": "front-raise", "sourceUrl": "" },
+    { "name": "Biceps Curl", "slug": "biceps-curl", "sourceUrl": "" },
+    { "name": "Hammer Curl", "slug": "hammer-curl", "sourceUrl": "" },
+    { "name": "Reverse Curl", "slug": "reverse-curl", "sourceUrl": "" },
+    { "name": "Triceps Extension", "slug": "triceps-extension", "sourceUrl": "" },
+    { "name": "Overhead Triceps Extension", "slug": "overhead-triceps-extension", "sourceUrl": "" },
+    { "name": "Calf Raise", "slug": "calf-raise", "sourceUrl": "" },
+    { "name": "Plank", "slug": "plank", "sourceUrl": "" },
+    { "name": "Bicycle Crunch", "slug": "bicycle-crunch", "sourceUrl": "" },
+    { "name": "Pullover", "slug": "pullover", "sourceUrl": "" },
+    { "name": "Side Bend", "slug": "side-bend", "sourceUrl": "" },
+    { "name": "Farmer Carry", "slug": "farmer-carry", "sourceUrl": "" },
+    { "name": "Walk / March", "slug": "walk-march", "sourceUrl": "" },
+    { "name": "Push-Up", "slug": "push-up", "sourceUrl": "" }
+  ]
+}

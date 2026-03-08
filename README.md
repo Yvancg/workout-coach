@@ -84,6 +84,7 @@ Then either:
 - `GET /api/snapshot`
 - `POST /api/logs`
 - `POST /api/sessions`
+- `DELETE /api/sessions/:sessionId`
 
 ## Stored Session Metadata
 
@@ -100,14 +101,19 @@ Current state:
 - these are safe local stand-ins and do not hotlink external media
 
 Planned next step:
-- replace placeholders with true ExerciseDB-derived assets once source format and redistribution terms are confirmed
+- replace placeholders with true ExerciseDB-derived assets from the official ExerciseDB media source, imported only for the exercises used by this app
 
 Recommended import workflow:
-1. identify the exact ExerciseDB media source to use
+1. fill in `scripts/exercise-asset-manifest.json` with the exact official ExerciseDB source URLs for each exercise used here
 2. confirm the license/terms for redistribution in this repository
-3. import only the exercises used by this app into a local folder
-4. keep originals or a manifest outside git if licensing requires it
-5. update `THIRD_PARTY_NOTICES.md` with attribution/source details
+3. run:
+
+```bash
+npm run exercise-assets:import
+```
+
+4. review imported files in `public/exercise-reference/imported/`
+5. update `THIRD_PARTY_NOTICES.md` with attribution/source details before committing any real third-party media
 
 See `THIRD_PARTY_NOTICES.md` for the repository policy around third-party exercise media.
 

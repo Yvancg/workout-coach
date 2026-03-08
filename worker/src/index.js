@@ -1,6 +1,6 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -143,6 +143,18 @@ async function handleSessionCreate(request, env) {
   return json({ ok: true });
 }
 
+async function handleSessionDelete(sessionId, env) {
+  if (!sessionId) {
+    return json({ error: "Missing session id" }, { status: 400 });
+  }
+
+  const db = ensureDb(env);
+  await db.prepare(`DELETE FROM workout_logs WHERE session_id = ?`).bind(sessionId).run();
+  await db.prepare(`DELETE FROM session_history WHERE session_id = ?`).bind(sessionId).run();
+
+  return json({ ok: true, sessionId });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -166,6 +178,11 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
         return await handleSessionCreate(request, env);
+      }
+
+      if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
+        const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
+        return await handleSessionDelete(sessionId, env);
       }
 
       return json({ error: "Not found" }, { status: 404 });

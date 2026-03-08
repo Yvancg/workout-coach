@@ -329,6 +329,28 @@
   margin-bottom: 0.75rem;
 }
 
+.sync-indicator-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.sync-indicator-dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.sync-indicator-live {
+  background: #7fcb34;
+  box-shadow: 0 0 0 6px rgba(127, 203, 52, 0.14);
+}
+
+.sync-indicator-idle {
+  background: #c9c2b9;
+}
+
 .history-exercise-list {
   display: grid;
   gap: 0.55rem;
@@ -336,6 +358,19 @@
 
 .history-exercise-row {
   padding: 0.2rem 0;
+}
+
+.history-delete {
+  margin-top: 0.55rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9a4d16;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
+  cursor: pointer;
 }
 
 .ui-button {

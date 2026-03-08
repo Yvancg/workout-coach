@@ -638,6 +638,8 @@ export default function App() {
       ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
   const syncUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.syncApiUrl);
+  const syncTarget = getSyncApiBase(state.syncApiUrl);
+  const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
   const tabs = [
     { id: "today", label: "Setup", icon: House },
     { id: "session", label: "Session", icon: Activity },
@@ -754,6 +756,24 @@ export default function App() {
       setSyncStatus("Synced with Cloudflare");
     } catch {
       setSyncStatus("Cloudflare sync failed. Local save only.");
+    }
+  };
+
+  const deleteSessionRemote = async (sessionId) => {
+    const apiBase = getSyncApiBase(state.syncApiUrl);
+    if (apiBase === null) return true;
+
+    try {
+      setSyncStatus("Deleting session from Cloudflare...");
+      const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("delete failed");
+      setSyncStatus("Session deleted from Cloudflare");
+      return true;
+    } catch {
+      setSyncStatus("Cloudflare delete failed. Local session removed.");
+      return false;
     }
   };
 
@@ -893,6 +913,17 @@ export default function App() {
       localStorage.removeItem(STORAGE_KEY);
       setState(DEFAULT_STATE);
       setSyncStatus("");
+    });
+  };
+
+  const deleteSession = (sessionId) => {
+    confirmAction("Delete this session and all of its logged sets?", async () => {
+      setState((prev) => ({
+        ...prev,
+        history: prev.history.filter((session) => session.sessionId !== sessionId),
+        logs: prev.logs.filter((log) => log.sessionId !== sessionId),
+      }));
+      await deleteSessionRemote(sessionId);
     });
   };
 
@@ -1052,6 +1083,14 @@ export default function App() {
                     <Play className="mr-2 h-5 w-5" /> Start Session
                   </Button>
                 </div>
+
+                <div className="sync-indicator-row">
+                  <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
+                  <div className="text-sm font-bold">
+                    {syncConnected ? "Connected to Cloudflare sync" : syncTarget === null ? "Local-only mode" : "Cloudflare sync not connected"}
+                  </div>
+                </div>
+                {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
               </CardContent>
             </Card>
 
@@ -1322,6 +1361,7 @@ export default function App() {
                       <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
                       {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
                       {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
+                      <button className="history-delete" onClick={() => deleteSession(session.sessionId)}>Delete session</button>
                     </div>
                     <div className="history-exercise-list">
                       {session.exercises.map((exercise) => (
