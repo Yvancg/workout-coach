@@ -169,7 +169,7 @@ const DEFAULT_STATE = {
 };
 
 const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
-const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg"];
+const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif"];
 
 function loadState() {
   try {
