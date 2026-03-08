@@ -171,33 +171,6 @@ const DEFAULT_STATE = {
 const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
 const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg"];
 
-const EXERCISE_REFERENCES = {
-  "Chair Squat": "https://athlemove.com/exercises/squat/",
-  "Goblet Squat": "https://athlemove.com/exercises/goblet-squat/",
-  "Split Squat": "https://athlemove.com/exercises/bulgarian-split-squat/",
-  "Reverse Lunge": "https://athlemove.com/exercises/reverse-lunge/",
-  "Step-Up": "https://athlemove.com/exercises/step-up/",
-  "DB Chest Press": "https://athlemove.com/exercises/dumbbell-bench-press/",
-  "Floor Press": "https://athlemove.com/exercises/dumbbell-floor-press/",
-  "DB Row": "https://athlemove.com/exercises/one-arm-dumbbell-row/",
-  "Shoulder Press": "https://athlemove.com/exercises/dumbbell-shoulder-press/",
-  "Lateral Raise": "https://athlemove.com/exercises/lateral-raise/",
-  "Front Raise": "https://athlemove.com/exercises/front-raise/",
-  "Biceps Curl": "https://athlemove.com/exercises/dumbbell-biceps-curl/",
-  "Hammer Curl": "https://athlemove.com/exercises/hammer-curl/",
-  "Reverse Curl": "https://athlemove.com/exercises/reverse-curl/",
-  "Triceps Extension": "https://athlemove.com/exercises/overhead-triceps-extension/",
-  "Overhead Triceps Extension": "https://athlemove.com/exercises/overhead-triceps-extension/",
-  "Calf Raise": "https://athlemove.com/exercises/calf-raise/",
-  Plank: "https://athlemove.com/exercises/plank/",
-  "Bicycle Crunch": "https://athlemove.com/exercises/bicycle-crunch/",
-  Pullover: "https://athlemove.com/exercises/dumbbell-pullover/",
-  "Side Bend": "https://athlemove.com/exercises/side-bend/",
-  "Farmer Carry": "https://athlemove.com/exercises/farmers-carry/",
-  "Walk / March": "https://athlemove.com/exercises/march/",
-  "Push-Up": "https://athlemove.com/exercises/push-up/",
-};
-
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -282,10 +255,6 @@ function resolveWeightGuide(guide, availableWeightsInput) {
   return guide;
 }
 
-function getExerciseReferenceUrl(name = "") {
-  return EXERCISE_REFERENCES[name] || `https://www.google.com/search?q=${encodeURIComponent(`site:athlemove.com/exercises ${name}`)}`;
-}
-
 function getExerciseReferenceImage(name = "") {
   const slug = name
     .toLowerCase()
@@ -307,6 +276,22 @@ function getExerciseReferenceImageCandidates(name = "") {
   return [...imported, getExerciseReferenceImage(name)];
 }
 
+function getWeightTotalKg(weightGuide = "") {
+  const totalMatch = weightGuide.match(/\((\d+(?:\.\d+)?)\s*kg total\)/i) || weightGuide.match(/(\d+(?:\.\d+)?)\s*kg total/i);
+  if (totalMatch) return Number.parseFloat(totalMatch[1]) || 0;
+
+  const eachHandMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg each hand/i);
+  if (eachHandMatch) return (Number.parseFloat(eachHandMatch[1]) || 0) * 2;
+
+  const oneHandMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg in one hand/i);
+  if (oneHandMatch) return Number.parseFloat(oneHandMatch[1]) || 0;
+
+  const singleKgMatch = weightGuide.match(/(\d+(?:\.\d+)?)\s*kg/i);
+  if (singleKgMatch && !/bodyweight/i.test(weightGuide)) return Number.parseFloat(singleKgMatch[1]) || 0;
+
+  return 0;
+}
+
 function summarizeSessionLogs(logs, sessions) {
   const grouped = sessions.map((session) => {
     const sessionLogs = logs.filter((log) => log.sessionId === session.sessionId);
@@ -319,16 +304,20 @@ function summarizeSessionLogs(logs, sessions) {
           completed: 0,
           target: log.target,
           isTime: log.isTime,
+          totalKg: 0,
         };
       }
       acc[key].sets += 1;
       acc[key].completed += Number(log.completed) || 0;
+      acc[key].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
       return acc;
     }, {});
 
     return {
       ...session,
       exercises: Object.values(byExercise),
+      totalKg: Object.values(byExercise).reduce((sum, exercise) => sum + exercise.totalKg, 0),
+      totalCompleted: Object.values(byExercise).reduce((sum, exercise) => sum + exercise.completed, 0),
     };
   });
 
@@ -345,6 +334,8 @@ function summarizeSessionLogs(logs, sessions) {
         durationMinutes: log.durationMinutes,
         setsCompleted: 0,
         exercises: [],
+        totalKg: 0,
+        totalCompleted: 0,
       };
     }
     acc[sessionId].setsCompleted += 1;
@@ -352,6 +343,7 @@ function summarizeSessionLogs(logs, sessions) {
     if (existing) {
       existing.sets += 1;
       existing.completed += Number(log.completed) || 0;
+      existing.totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
     } else {
       acc[sessionId].exercises.push({
         exercise: log.exercise,
@@ -359,8 +351,11 @@ function summarizeSessionLogs(logs, sessions) {
         completed: Number(log.completed) || 0,
         target: log.target,
         isTime: log.isTime,
+        totalKg: (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide),
       });
     }
+    acc[sessionId].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
+    acc[sessionId].totalCompleted += Number(log.completed) || 0;
     return acc;
   }, {}));
 
@@ -644,7 +639,6 @@ export default function App() {
   const latestSession = state.history[0] || null;
   const activeThemeClass = `${state.activeTab}-theme`;
   const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
-  const currentExerciseReference = currentExercise ? getExerciseReferenceUrl(currentExercise.name) : "";
   const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
   const currentExerciseImage = currentExerciseImages[exerciseImageIndex] || currentExerciseImages.at(-1) || "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(state.logs, state.history).slice(0, 8), [state.logs, state.history]);
@@ -1048,8 +1042,8 @@ export default function App() {
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
         <div className="hero-card border-4 border-black rounded-3xl p-4">
           <div className="eyebrow">Workout Coach</div>
-          <h1 className="text-3xl font-black tracking-tight">Minimal training flow, tuned for Android.</h1>
-          <p className="hero-copy text-base font-semibold mt-2">A calmer app shell with faster access to today&apos;s plan, active session controls, and history.</p>
+          <h1 className="text-3xl font-black tracking-tight">Workout Coach: Your Simple Strength Companion</h1>
+          <p className="hero-copy text-base font-semibold mt-2">Workout Coach guides you through effective dumbbell workouts with a clear, phone-first flow. Follow the program of the day, complete each set, track reps and rest, and log every exercise without losing focus.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <div className="border-4 border-black rounded-2xl px-3 py-2 text-sm font-black flex items-center gap-2"><CalendarDays className="h-4 w-4" /> {todayDateLabel()}</div>
             <div className="border-4 border-black rounded-2xl px-3 py-2 text-sm font-black flex items-center gap-2"><ListChecks className="h-4 w-4" /> {state.activeProgram}</div>
@@ -1307,7 +1301,6 @@ export default function App() {
                         <li key={cue} className="text-base font-bold flex items-start gap-2"><ChevronRight className="h-4 w-4 mt-1" /> {cue}</li>
                       ))}
                     </ul>
-                    <a className="reference-link" href={currentExerciseReference} target="_blank" rel="noreferrer">Open visual reference</a>
                   </div>
 
                   <div className="border-4 border-black rounded-3xl p-4 text-center">
@@ -1401,11 +1394,11 @@ export default function App() {
             <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
               <CardContent className="p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
-                    <RotateCcw className="mr-2 h-5 w-5" /> Reset Session
+                  <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
+                    <RotateCcw className="h-5 w-5" /> Reset
                   </Button>
-                  <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ activeTab: "today" })}>
-                    <House className="mr-2 h-5 w-5" /> Back to Today
+                  <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ activeTab: "today" })}>
+                    <House className="h-5 w-5" /> Today
                   </Button>
                 </div>
               </CardContent>
@@ -1429,7 +1422,7 @@ export default function App() {
                       <div className="history-session-topline">
                         <div>
                       <div className="text-lg font-black">{session.date} • {session.program}</div>
-                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets</div>
+                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets • {Math.round(session.totalCompleted || 0)} reps/sec • {Math.round(session.totalKg || 0)} kg total</div>
                       <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
                       {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
                       {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
@@ -1451,7 +1444,7 @@ export default function App() {
                       {session.exercises.map((exercise) => (
                         <div key={`${session.sessionId}-${exercise.exercise}`} className="history-exercise-row">
                           <div className="text-base font-black">{exercise.exercise}</div>
-                          <div className="text-sm font-bold">{exercise.sets} sets • {exercise.completed} total {exercise.isTime ? "sec" : "reps"}</div>
+                          <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"} • {Math.round(exercise.totalKg || 0)} kg</div>
                         </div>
                       ))}
                     </div>

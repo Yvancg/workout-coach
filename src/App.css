@@ -433,6 +433,13 @@
   color: #b04712;
 }
 
+.session-footer-button {
+  gap: 0.45rem;
+  padding-left: 0.9rem;
+  padding-right: 0.9rem;
+  white-space: nowrap;
+}
+
 .ui-button {
   display: inline-flex;
   align-items: center;
@@ -677,4 +684,25 @@ iframe {
   .rounded-2xl {
     border-radius: 22px;
   }
+
+  .text-xs { font-size: 0.84rem; }
+  .text-sm { font-size: 0.98rem; }
+  .text-base { font-size: 1.08rem; }
+  .text-lg { font-size: 1.18rem; }
+  .text-xl { font-size: 1.28rem; }
+  .text-2xl { font-size: 1.58rem; }
+}
+
+@media (display-mode: standalone) {
+  :root {
+    font-size: 17px;
+  }
+
+  .text-xs { font-size: 0.9rem; }
+  .text-sm { font-size: 1rem; }
+  .text-base { font-size: 1.1rem; }
+  .text-lg { font-size: 1.22rem; }
+  .text-xl { font-size: 1.32rem; }
+  .text-2xl { font-size: 1.62rem; }
+  .text-3xl { font-size: 2rem; }
 }
