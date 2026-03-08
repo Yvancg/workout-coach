@@ -1,8 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import {
   Play,
   RotateCcw,
@@ -18,7 +14,6 @@ import {
   VolumeX,
   CalendarDays,
   Clock3,
-  Target,
   ListChecks,
 } from "lucide-react";
 
@@ -211,7 +206,49 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-export default function AndroidWorkoutCoachApp() {
+function Card({ className = "", children, ...props }) {
+  return <div className={className} {...props}>{children}</div>;
+}
+
+function CardHeader({ className = "", children, ...props }) {
+  return <div className={className} {...props}>{children}</div>;
+}
+
+function CardTitle({ className = "", children, ...props }) {
+  return <h2 className={className} {...props}>{children}</h2>;
+}
+
+function CardContent({ className = "", children, ...props }) {
+  return <div className={className} {...props}>{children}</div>;
+}
+
+function Button({ className = "", children, ...props }) {
+  return (
+    <button className={className} {...props}>
+      {children}
+    </button>
+  );
+}
+
+function Input({ className = "", ...props }) {
+  return <input className={className} {...props} />;
+}
+
+function Progress({ value = 0, className = "", ...props }) {
+  return (
+    <div className={className} {...props}>
+      <div
+        style={{
+          width: `${Math.max(0, Math.min(100, value))}%`,
+          height: "100%",
+          background: "currentColor",
+        }}
+      />
+    </div>
+  );
+}
+
+export default function App() {
   const [state, setState] = useState(loadState);
   const [sheetStatus, setSheetStatus] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -279,7 +316,9 @@ export default function AndroidWorkoutCoachApp() {
       exerciseIndex: 0,
       currentSet: 1,
       currentRep: 0,
-      setDurationRemaining: currentExercise?.isTime ? currentExercise.reps : 0,
+      setDurationRemaining: PROGRAMS[state.activeProgram][state.dayType]?.[0]?.isTime
+        ? PROGRAMS[state.activeProgram][state.dayType][0].reps
+        : 0,
       setTimerRunning: false,
       restRemaining: 0,
       restTimerRunning: false,
