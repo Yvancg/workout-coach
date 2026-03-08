@@ -3,6 +3,10 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
   state,
+  authEmail,
+  authUserEmail,
+  authConfigured,
+  authStatus,
   syncIdentityEmail,
   installReady,
   programs,
@@ -11,7 +15,10 @@ export function TodayTab({
   completedTodaySets,
   latestSession,
   installApp,
+  setAuthEmail,
   startSession,
+  signInWithMagicLink,
+  signOut,
   updateState,
   syncConnected,
   syncTarget,
@@ -54,10 +61,31 @@ export function TodayTab({
           </div>
 
           <div>
-            <label className="block text-sm font-black mb-1">Cloudflare sync API URL</label>
+            <label className="block text-sm font-black mb-1">Sync API URL</label>
             <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" placeholder="https://workout-coach-api.your-name.workers.dev" value={state.syncApiUrl} onChange={(e) => updateState({ syncApiUrl: e.target.value })} />
-            <p className="mt-1 text-xs font-semibold">Paste your Cloudflare Worker base URL here for production sync. In local dev, leaving this blank uses the proxied `/api` Worker automatically.</p>
+            <p className="mt-1 text-xs font-semibold">Paste your Worker base URL here for production sync. In local dev, leaving this blank uses the proxied `/api` Worker automatically.</p>
             {syncUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That still looks like a spreadsheet link. This field should point to your Worker URL.</p>}
+          </div>
+
+          <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel space-y-2">
+            <div>
+              <div className="text-sm font-black">Supabase login</div>
+              <div className="text-xs font-semibold">Use magic-link login so sync requests can send your personal session token to the Worker.</div>
+            </div>
+            {!authConfigured && <div className="text-xs font-bold">Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to enable login.</div>}
+            {authConfigured && !authUserEmail && (
+              <div className="space-y-2">
+                <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="email" autoComplete="email" placeholder="you@example.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Email me a login link</Button>
+              </div>
+            )}
+            {authConfigured && authUserEmail && (
+              <div className="space-y-2">
+                <div className="text-sm font-bold">Signed in as {authUserEmail}</div>
+                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
+              </div>
+            )}
+            {authStatus && <div className="text-xs font-semibold">{authStatus}</div>}
           </div>
 
           <div>
@@ -76,7 +104,7 @@ export function TodayTab({
 
           <div className="sync-indicator-row">
             <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
-            <div className="text-sm font-bold">{syncConnected ? "Connected to Cloudflare sync" : syncTarget === null ? "Local-only mode" : "Cloudflare login required or not connected"}</div>
+            <div className="text-sm font-bold">{syncConnected ? "Connected to sync" : syncTarget === null ? "Local-only mode" : "Login required or sync not connected"}</div>
           </div>
           {syncIdentityEmail && <div className="text-xs font-semibold">Signed in as {syncIdentityEmail}</div>}
           {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}

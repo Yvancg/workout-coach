@@ -20,10 +20,11 @@ Optional frontend env values live in `.env` files. Start from:
 cp .env.example .env.local
 ```
 
+- `VITE_SUPABASE_URL` points the app at your Supabase project.
+- `VITE_SUPABASE_ANON_KEY` is the public anon key from Supabase Auth.
 - `VITE_SYNC_API_URL` can point the app at your deployed Worker without pasting it into the UI.
-- Do not ship your real sync token in a public build. The app is now designed to use Cloudflare Access login cookies instead.
 
-## Cloudflare D1 Setup
+## Supabase + D1 Setup
 
 1. Log in to Cloudflare:
 
@@ -53,13 +54,13 @@ database_id = "YOUR_REAL_DATABASE_ID"
 ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
 ```
 
-5. Protect the Worker with Cloudflare Access and allow only your email.
+5. Create a Supabase project and enable email magic-link auth.
 
-Recommended Access setup:
+In Supabase:
 
-- create a Cloudflare Access application for the Worker hostname
-- use a policy that allows only your email address
-- keep session cookies enabled for your personal devices
+- create a project
+- enable Email auth with magic links or OTP
+- copy the project URL and anon key
 
 6. Keep an admin fallback token only for scripts or emergency access:
 
@@ -67,21 +68,22 @@ Recommended Access setup:
 npx wrangler secret put API_TOKEN
 ```
 
-7. Set the allowed Access email list and fallback owner in `wrangler.toml`:
+7. Set the Worker auth and fallback owner values in `wrangler.toml`:
 
 ```toml
 [vars]
-ACCESS_ALLOW_EMAILS = "you@example.com"
-ACCESS_FALLBACK_OWNER_EMAIL = "you@example.com"
-ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
-ACCESS_AUD = "your-access-audience-tag"
+SUPABASE_URL = "https://your-project-ref.supabase.co"
+SUPABASE_JWT_AUDIENCE = "authenticated"
+ADMIN_FALLBACK_OWNER_EMAIL = "you@example.com"
+ADMIN_FALLBACK_OWNER_ID = "admin-script"
 WRITE_RATE_LIMIT_MAX = "60"
 WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
 AUDIT_LOG_ENABLED = "true"
 ```
 
-- `ACCESS_TEAM_DOMAIN` is your Zero Trust team domain.
-- `ACCESS_AUD` is the audience value from the Access application.
+- `SUPABASE_URL` is your project URL.
+- `SUPABASE_JWT_AUDIENCE` is usually `authenticated` for browser sessions.
+- `ADMIN_FALLBACK_OWNER_EMAIL` and `ADMIN_FALLBACK_OWNER_ID` are only for admin scripts using `API_TOKEN`.
 - `WRITE_RATE_LIMIT_MAX` and `WRITE_RATE_LIMIT_WINDOW_SECONDS` cap write bursts on sync routes.
 - `AUDIT_LOG_ENABLED` controls lightweight Worker audit logging for auth failures, rate-limit hits, session edits, and session deletes.
 
@@ -90,12 +92,12 @@ AUDIT_LOG_ENABLED = "true"
 Example `.env.local`:
 
 ```bash
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-public-supabase-anon-key
 VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
 ```
 
-The app will use Cloudflare Access session cookies for authenticated sync requests. No frontend bearer token is required.
-
-When `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, the Worker verifies `Cf-Access-Jwt-Assertion` against the Cloudflare Access JWKS instead of trusting the email header alone.
+The app uses Supabase Auth on the frontend and sends the Supabase access token to the Worker as a bearer token. The Worker verifies that JWT against the Supabase JWKS.
 
 9. Apply migrations locally first:
 
@@ -124,7 +126,7 @@ Run the Worker locally in one terminal:
 npm run cf:dev
 ```
 
-If you want auth enabled in local Worker dev too, create a local secret before starting Wrangler:
+If you want admin fallback auth enabled in local Worker dev too, create a local secret before starting Wrangler:
 
 ```bash
 npx wrangler secret put API_TOKEN --local
@@ -138,7 +140,7 @@ npm run dev
 
 Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
 
-If you use auth locally without Access in front of the local Worker, you can still use the fallback bearer token for scripts or manual testing.
+If you use auth locally, the app signs in through Supabase. The fallback bearer token is only for scripts or manual admin testing.
 
 ## Production Deploy
 
@@ -153,7 +155,7 @@ Then either:
 - paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or
 - set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
 
-If you prefer not to hardcode the Worker URL in a build, you can still leave `VITE_SYNC_API_URL` unset and paste the URL into the in-app `Cloudflare sync API URL` field on the device.
+If you prefer not to hardcode the Worker URL in a build, you can still leave `VITE_SYNC_API_URL` unset and paste the URL into the in-app sync API URL field on the device.
 
 ## API Routes
 
@@ -168,7 +170,9 @@ If you prefer not to hardcode the Worker URL in a build, you can still leave `VI
 
 `/api/history-summary` returns grouped history rows ready for the app UI, so the client no longer needs to download the full raw log history just to render session cards.
 
-The app currently exports raw CSV only from logs stored on the local device. Cloudflare sync is used for grouped history summaries in the UI, not full raw-log rehydration.
+The app currently exports raw CSV only from logs stored on the local device. Remote sync is used for grouped history summaries in the UI, not full raw-log rehydration.
+
+The Worker also supports an admin fallback `API_TOKEN` for scripts, but normal app sync should use Supabase login.
 
 ## Stored Session Metadata
 

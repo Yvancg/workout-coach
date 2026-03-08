@@ -10,10 +10,10 @@ import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, loadWhoAmI, updateRemoteSession } from "./lib/syncClient";
+import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
-  PLAYFUL_LINES,
   PROGRAMS,
   REP_PHASES,
   SHEET_HEADERS,
@@ -29,7 +29,6 @@ import {
   getSyncApiBase,
   isAlternateExercise,
   loadState,
-  pickLine,
   resolveWeightGuide,
   summarizeSessionLogs,
   todayDateLabel,
@@ -37,6 +36,7 @@ import {
 
 function speakWithStyle(text, enabled, mode = "default") {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (!text) return;
 
   const voices = window.speechSynthesis.getVoices();
   const preferredVoice = voices.find((voice) =>
@@ -48,19 +48,9 @@ function speakWithStyle(text, enabled, mode = "default") {
   if (preferredVoice) utterance.voice = preferredVoice;
   utterance.lang = preferredVoice?.lang || "en-US";
 
-  if (mode === "warmup") {
-    utterance.rate = 0.86;
-    utterance.pitch = 0.88;
-  } else if (mode === "stretch") {
-    utterance.rate = 0.82;
-    utterance.pitch = 0.85;
-  } else if (mode === "set") {
-    utterance.rate = 0.93;
-    utterance.pitch = 0.92;
-  } else {
-    utterance.rate = 0.9;
-    utterance.pitch = 0.9;
-  }
+  void mode;
+  utterance.rate = 1;
+  utterance.pitch = 1;
 
   window.speechSynthesis.speak(utterance);
 }
@@ -84,6 +74,9 @@ async function runHaptic(type = "light") {
 
 export default function App() {
   const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authStatus, setAuthStatus] = useState("");
+  const [authSession, setAuthSession] = useState(null);
   const [syncStatus, setSyncStatus] = useState("");
   const [syncIdentityEmail, setSyncIdentityEmail] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
@@ -94,17 +87,42 @@ export default function App() {
   const repGuideRef = useRef(null);
 
   useEffect(() => {
+    if (!supabase) return;
+
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setAuthSession(data.session || null);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session || null);
+      setAuthStatus(session ? "Logged in with Supabase." : "");
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     const syncTarget = getSyncApiBase(state.syncApiUrl);
     if (syncTarget === null) return;
+    if (!authSession?.access_token) {
+      return;
+    }
 
     let cancelled = false;
 
     async function loadRemoteSnapshot() {
       try {
-        setSyncStatus("Loading Cloudflare sync...");
+        setSyncStatus("Loading sync...");
         const [historyResult, whoAmIResult] = await Promise.all([
-          loadHistorySummary(state.syncApiUrl),
-          loadWhoAmI(state.syncApiUrl),
+          loadHistorySummary(state.syncApiUrl, authSession.access_token),
+          loadWhoAmI(state.syncApiUrl, authSession.access_token),
         ]);
         if (historyResult.skipped || whoAmIResult.skipped) return;
         if (cancelled) return;
@@ -114,20 +132,20 @@ export default function App() {
           history: Array.isArray(historyResult.data?.history) ? historyResult.data.history : prev.history,
         }));
         setSyncIdentityEmail(whoAmIResult.data?.email || "");
-        setSyncStatus("Cloudflare sync connected");
+        setSyncStatus("Sync connected");
       } catch (error) {
         if (cancelled) return;
         if (error?.status === 429) {
-          setSyncStatus("Cloudflare sync is temporarily rate limited.");
+          setSyncStatus("Sync is temporarily rate limited.");
           return;
         }
         if (error?.status === 401 || error?.status === 403) {
           setSyncIdentityEmail("");
-          setSyncStatus("Cloudflare Access login required.");
+          setSyncStatus("Supabase login required for sync.");
           return;
         }
         setSyncIdentityEmail("");
-        setSyncStatus("Cloudflare sync unavailable. Local save only.");
+        setSyncStatus("Sync unavailable. Local save only.");
       }
     }
 
@@ -136,14 +154,14 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [state.syncApiUrl, setState]);
+  }, [authSession?.access_token, state.syncApiUrl, setState]);
 
   useEffect(() => {
     if (state.setTimerRunning && state.setDurationRemaining > 0) {
       setTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.setDurationRemaining <= 1) {
-            speakWithStyle("Time. Nice control.", prev.soundEnabled, prev.sessionStage === "stretch" ? "stretch" : "set");
+            speakWithStyle("time", prev.soundEnabled, prev.sessionStage === "stretch" ? "stretch" : "set");
             return { ...prev, setDurationRemaining: 0, setTimerRunning: false };
           }
           return { ...prev, setDurationRemaining: prev.setDurationRemaining - 1 };
@@ -158,7 +176,7 @@ export default function App() {
       restTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.restRemaining <= 1) {
-            speakWithStyle(pickLine(PLAYFUL_LINES.restDone, prev.currentSet), prev.soundEnabled, "set");
+            speakWithStyle("rest over", prev.soundEnabled, "set");
             return { ...prev, restRemaining: 0, restTimerRunning: false };
           }
           return { ...prev, restRemaining: prev.restRemaining - 1 };
@@ -178,13 +196,12 @@ export default function App() {
       setState((prev) => {
         const exercise = PROGRAMS[prev.activeProgram][prev.dayType]?.[prev.exerciseIndex];
         if (!exercise || exercise.isTime || !prev.repGuideRunning) return prev;
+        const firstPhaseCue = getPhaseCue(REP_PHASES[0]);
 
         if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
           const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
           const nextPhase = REP_PHASES[nextPhaseIndex];
-          const nextCue = nextPhase === "Wait"
-            ? `${getPhaseCue(nextPhase, prev.currentRep + nextPhaseIndex)} ${pickLine(PLAYFUL_LINES.repPush, prev.currentRep + nextPhaseIndex)}`
-            : getPhaseCue(nextPhase, prev.currentRep + nextPhaseIndex);
+          const nextCue = getPhaseCue(nextPhase, prev.currentRep + nextPhaseIndex);
           speakWithStyle(nextCue, prev.soundEnabled, "set");
           return {
             ...prev,
@@ -195,7 +212,7 @@ export default function App() {
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            speakWithStyle(`${pickLine(PLAYFUL_LINES.repPraise, prev.currentRep)} Right side. ${getPhaseCue("Up", prev.currentRep + 1)}`, prev.soundEnabled, "set");
+            speakWithStyle(firstPhaseCue, prev.soundEnabled, "set");
             return {
               ...prev,
               repGuideSide: "right",
@@ -206,7 +223,7 @@ export default function App() {
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          speakWithStyle(done ? `Rep ${nextRep} complete. Set complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)}` : `Rep ${nextRep} complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)} Left side. ${getPhaseCue("Up", nextRep)}`, prev.soundEnabled, "set");
+          if (!done) speakWithStyle(firstPhaseCue, prev.soundEnabled, "set");
 
           return {
             ...prev,
@@ -220,7 +237,7 @@ export default function App() {
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        speakWithStyle(done ? `Rep ${nextRep} complete. Set complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)}` : `Rep ${nextRep} complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)} ${getPhaseCue("Up", nextRep)}`, prev.soundEnabled, "set");
+        if (!done) speakWithStyle(firstPhaseCue, prev.soundEnabled, "set");
 
         return {
           ...prev,
@@ -268,7 +285,12 @@ export default function App() {
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
   const syncUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.syncApiUrl);
   const syncTarget = getSyncApiBase(state.syncApiUrl);
+  const displayedSyncIdentityEmail = authSession?.access_token ? syncIdentityEmail : "";
+  const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
+    ? "Supabase login required for sync."
+    : syncStatus;
   const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
+  const authUserEmail = authSession?.user?.email || "";
   const tabs = [
     { id: "today", label: "Setup", icon: House },
     { id: "session", label: "Session", icon: Activity },
@@ -276,6 +298,19 @@ export default function App() {
   ];
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
+  const resetRestTimer = () => {
+    setState((prev) => (prev.restTimerRunning || prev.restRemaining > 0
+      ? { ...prev, restRemaining: 0, restTimerRunning: false }
+      : prev));
+  };
+  const handleTabChange = (tab) => {
+    resetRestTimer();
+    updateState({ activeTab: tab });
+  };
+  const navigateToToday = () => {
+    resetRestTimer();
+    updateState({ activeTab: "today" });
+  };
 
   const handleExerciseImageError = () => {
     if (!currentExercise) return;
@@ -290,39 +325,42 @@ export default function App() {
     return Math.max(1, Math.round((Date.now() - new Date(state.sessionStartedAt).getTime()) / 60000));
   };
 
-  const syncSessionToCloudflare = async (sessionRecord) => {
+  const syncSessionToRemote = async (sessionRecord) => {
+    if (!authSession?.access_token) return;
     try {
-      setSyncStatus("Saving session to Cloudflare...");
-      const result = await createRemoteSession(state.syncApiUrl, sessionRecord);
+      setSyncStatus("Saving session to sync...");
+      const result = await createRemoteSession(state.syncApiUrl, authSession.access_token, sessionRecord);
       if (result.skipped) return;
-      setSyncStatus("Synced with Cloudflare");
+      setSyncStatus("Synced");
     } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
+      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
     }
   };
 
   const deleteSessionRemote = async (sessionId) => {
+    if (!authSession?.access_token) return true;
     try {
-      setSyncStatus("Deleting session from Cloudflare...");
-      const result = await deleteRemoteSession(state.syncApiUrl, sessionId);
+      setSyncStatus("Deleting session from sync...");
+      const result = await deleteRemoteSession(state.syncApiUrl, authSession.access_token, sessionId);
       if (result.skipped) return true;
-      setSyncStatus("Session deleted from Cloudflare");
+      setSyncStatus("Session deleted from sync");
       return true;
     } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare delete failed. Local session removed.");
+      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync delete failed. Local session removed.");
       return false;
     }
   };
 
   const updateSessionRemote = async (sessionId, sessionPatch) => {
+    if (!authSession?.access_token) return true;
     try {
-      setSyncStatus("Updating session in Cloudflare...");
-      const result = await updateRemoteSession(state.syncApiUrl, sessionId, sessionPatch);
+      setSyncStatus("Updating session in sync...");
+      const result = await updateRemoteSession(state.syncApiUrl, authSession.access_token, sessionId, sessionPatch);
       if (result.skipped) return true;
-      setSyncStatus("Session updated in Cloudflare");
+      setSyncStatus("Session updated in sync");
       return true;
     } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare update failed. Local session updated.");
+      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync update failed. Local session updated.");
       return false;
     }
   };
@@ -332,13 +370,41 @@ export default function App() {
     updateState({ logs: nextLogs });
 
     try {
-      setSyncStatus("Saving set to Cloudflare...");
-      const result = await createRemoteLog(state.syncApiUrl, entry);
+      if (!authSession?.access_token) return;
+      setSyncStatus("Saving set to sync...");
+      const result = await createRemoteLog(state.syncApiUrl, authSession.access_token, entry);
       if (result.skipped) return;
-      setSyncStatus("Synced with Cloudflare");
+      setSyncStatus("Synced");
     } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
+      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
     }
+  };
+
+  const signInWithMagicLink = async () => {
+    if (!supabase || !authEmail.trim()) {
+      setAuthStatus("Enter your email to receive a magic link.");
+      return;
+    }
+
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const { error } = await supabase.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: { emailRedirectTo: redirectTo },
+    });
+
+    setAuthStatus(error ? error.message : `Magic link sent to ${authEmail.trim()}.`);
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setAuthStatus(error.message);
+      return;
+    }
+    setSyncIdentityEmail("");
+    setSyncStatus("");
+    setAuthStatus("Signed out.");
   };
 
   const startSession = () => {
@@ -363,7 +429,7 @@ export default function App() {
       stretchDone: false,
     });
     runHaptic("medium");
-    speakWithStyle(`${pickLine(PLAYFUL_LINES.sessionStart, 0)} ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled, "warmup");
+    speakWithStyle("warm up", state.soundEnabled, "warmup");
   };
 
   const beginProgramAfterWarmup = () => {
@@ -383,7 +449,7 @@ export default function App() {
       restRemaining: 0,
       restTimerRunning: false,
     });
-    speakWithStyle(`${pickLine(PLAYFUL_LINES.firstExercise, 0)} ${firstExercise?.name || "Begin"}.`, state.soundEnabled, "set");
+    speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, "set");
   };
 
   const finishSession = () => {
@@ -421,9 +487,9 @@ export default function App() {
       warmupDone: false,
       dayType: getNextDayType(state.dayType),
     });
-    syncSessionToCloudflare(sessionRecord);
+    syncSessionToRemote(sessionRecord);
     runHaptic("success");
-    speakWithStyle(pickLine(PLAYFUL_LINES.sessionComplete, state.history.length), state.soundEnabled, "stretch");
+    speakWithStyle("session complete", state.soundEnabled, "stretch");
   };
 
   const moveToNextStage = (restSeconds) => {
@@ -460,7 +526,7 @@ export default function App() {
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
       });
-      speakWithStyle(`${pickLine(PLAYFUL_LINES.nextExercise, state.exerciseIndex)} ${nextExercise?.name || "Continue"}.`, state.soundEnabled, "set");
+      speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, "set");
       return;
     }
 
@@ -475,7 +541,7 @@ export default function App() {
       repGuidePhaseRemaining: 0,
       repGuideSide: "left",
     });
-    speakWithStyle(`${pickLine(PLAYFUL_LINES.stretch, state.exerciseIndex)} ${pickLine(PLAYFUL_LINES.stretchCue, state.exerciseIndex)}`, state.soundEnabled, "stretch");
+    speakWithStyle("stretch", state.soundEnabled, "stretch");
   };
 
   const completeSet = async () => {
@@ -505,6 +571,7 @@ export default function App() {
   };
 
   const resetSession = () => {
+    resetRestTimer();
     confirmAction("Reset the full session and clear current progress?", () => {
       runHaptic("light");
       updateState({
@@ -579,6 +646,7 @@ export default function App() {
 
   const toggleRepGuide = () => {
     if (!currentExercise || currentExercise.isTime) return;
+    resetRestTimer();
 
     if (state.repGuideRunning) {
       updateState({ repGuideRunning: false });
@@ -594,16 +662,11 @@ export default function App() {
       repGuidePhaseRemaining: 1,
       repGuideSide: nextSide,
     });
-    speakWithStyle(
-      isAlternateExercise(currentExercise.name)
-        ? `${pickLine(PLAYFUL_LINES.repPraise, state.currentRep)} ${nextSide === "left" ? "Left side" : "Right side"}. ${getPhaseCue("Up", state.currentRep)}`
-        : `${pickLine(PLAYFUL_LINES.repPraise, state.currentRep)} ${getPhaseCue("Up", state.currentRep)}`,
-      state.soundEnabled,
-      "set",
-    );
+    speakWithStyle(getPhaseCue(REP_PHASES[0], state.currentRep), state.soundEnabled, "set");
   };
 
   const restartRepGuide = () => {
+    resetRestTimer();
     confirmAction("Restart the guided rep count for this set?", () => {
       updateState({
         currentRep: 0,
@@ -617,6 +680,7 @@ export default function App() {
 
   const toggleSetTimer = () => {
     if (!currentExercise?.isTime) return;
+    resetRestTimer();
     if (state.setDurationRemaining === 0) {
       updateState({ setDurationRemaining: currentExercise.reps, setTimerRunning: true });
       return;
@@ -625,8 +689,17 @@ export default function App() {
   };
 
   const resetSetTimer = () => {
+    resetRestTimer();
     confirmAction("Reset this timer back to the full target time?", () => {
       updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false });
+    });
+  };
+
+  const toggleRestTimer = () => {
+    const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+    updateState({
+      restTimerRunning: !state.restTimerRunning || state.restRemaining === 0,
+      restRemaining: state.restRemaining || restSeconds,
     });
   };
 
@@ -639,12 +712,16 @@ export default function App() {
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
         <HeroHeader todayLabel={todayDateLabel()} activeProgram={state.activeProgram} dayType={state.dayType} />
 
-        <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={(tab) => updateState({ activeTab: tab })} />
+        <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={handleTabChange} />
 
         {state.activeTab === "today" && (
           <TodayTab
             state={state}
-            syncIdentityEmail={syncIdentityEmail}
+            authEmail={authEmail}
+            authUserEmail={authUserEmail}
+            authConfigured={supabaseConfigured}
+            authStatus={authStatus}
+            syncIdentityEmail={displayedSyncIdentityEmail}
             installReady={installReady}
             programs={PROGRAMS}
             currentProgramMeta={currentProgramMeta}
@@ -652,11 +729,14 @@ export default function App() {
             completedTodaySets={completedTodaySets}
             latestSession={latestSession}
             installApp={installApp}
+            setAuthEmail={setAuthEmail}
             startSession={startSession}
+            signInWithMagicLink={signInWithMagicLink}
+            signOut={signOut}
             updateState={updateState}
             syncConnected={syncConnected}
             syncTarget={syncTarget}
-            syncStatus={syncStatus}
+            syncStatus={displayedSyncStatus}
             syncUrlLooksLikeSpreadsheet={syncUrlLooksLikeSpreadsheet}
           />
         )}
@@ -670,23 +750,24 @@ export default function App() {
             resolvedCurrentWeight={resolvedCurrentWeight}
             currentExerciseImage={currentExerciseImage}
             repGuideLabel={repGuideLabel}
-            syncStatus={syncStatus}
-            formatSeconds={formatSeconds}
-            DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
-            onExerciseImageError={handleExerciseImageError}
-            isAlternateExercise={isAlternateExercise}
-            updateState={updateState}
-            startSession={startSession}
-            beginProgramAfterWarmup={beginProgramAfterWarmup}
-            toggleRepGuide={toggleRepGuide}
-            restartRepGuide={restartRepGuide}
-            toggleSetTimer={toggleSetTimer}
-            resetSetTimer={resetSetTimer}
-            completeSet={completeSet}
-            skipRest={skipRest}
-            resetSession={resetSession}
-            finishSession={finishSession}
-          />
+            syncStatus={displayedSyncStatus}
+             formatSeconds={formatSeconds}
+             DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
+             onExerciseImageError={handleExerciseImageError}
+             isAlternateExercise={isAlternateExercise}
+             startSession={startSession}
+             beginProgramAfterWarmup={beginProgramAfterWarmup}
+             toggleRepGuide={toggleRepGuide}
+             restartRepGuide={restartRepGuide}
+             toggleSetTimer={toggleSetTimer}
+             resetSetTimer={resetSetTimer}
+             toggleRestTimer={toggleRestTimer}
+             completeSet={completeSet}
+             skipRest={skipRest}
+             resetSession={resetSession}
+             finishSession={finishSession}
+             navigateToToday={navigateToToday}
+           />
         )}
 
         {state.activeTab === "history" && (

@@ -1,4 +1,4 @@
-import { DEFAULT_STATE, IMPORTED_IMAGE_EXTENSIONS, PLAYFUL_LINES, REP_PHASES, STORAGE_KEY } from "./workoutData";
+import { DEFAULT_STATE, IMPORTED_IMAGE_EXTENSIONS, REP_PHASES, STORAGE_KEY } from "./workoutData";
 
 export function loadState() {
   try {
@@ -230,9 +230,10 @@ export function getSyncApiBase(url = "") {
   return null;
 }
 
-export function getSyncHeaders(includeJson = false) {
+export function getSyncHeaders(includeJson = false, accessToken = "") {
   const headers = {};
   if (includeJson) headers["Content-Type"] = "application/json";
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   return headers;
 }
 
@@ -242,12 +243,10 @@ export function pickLine(lines, seed = 0) {
 }
 
 export function getPhaseCue(phase, seed = 0) {
-  if (phase === "Up") return pickLine(PLAYFUL_LINES.phaseUp, seed);
-  if (phase === "2") return pickLine(PLAYFUL_LINES.phaseTwo, seed);
-  if (phase === "Hold") return pickLine(PLAYFUL_LINES.phaseHold, seed);
-  if (phase === "Lower") return pickLine(PLAYFUL_LINES.phaseLower, seed);
-  if (phase === "3") return pickLine(PLAYFUL_LINES.phaseThree, seed);
-  if (phase === "Wait") return pickLine(PLAYFUL_LINES.phaseWait, seed);
+  void seed;
+  if (phase === "Up") return "up";
+  if (phase === "Hold") return "hold";
+  if (phase === "Down") return "down";
   return phase;
 }
 
@@ -267,4 +266,4 @@ export function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-export { PLAYFUL_LINES, REP_PHASES, STORAGE_KEY };
+export { REP_PHASES, STORAGE_KEY };

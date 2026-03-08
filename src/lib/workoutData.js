@@ -164,6 +164,6 @@ export const DEFAULT_STATE = {
   repGuideSide: "left",
 };
 
-export const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
+export const REP_PHASES = ["Up", "2", "Hold", "2", "Down", "2", "3", "Hold"];
 
 export const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif"];

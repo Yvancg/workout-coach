@@ -72,17 +72,22 @@ function assertAllowedOrigin(request, env) {
   }
 }
 
-function getAllowedEmails(env) {
-  return env.ACCESS_ALLOW_EMAILS?.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean) || [];
+function getSupabaseUrl(env) {
+  return env.SUPABASE_URL?.trim() || "";
 }
 
-function getAccessAudiences(env) {
-  return env.ACCESS_AUD?.split(",").map((value) => value.trim()).filter(Boolean) || [];
+function getSupabaseIssuer(env) {
+  const supabaseUrl = getSupabaseUrl(env);
+  return supabaseUrl ? `${supabaseUrl}/auth/v1` : "";
 }
 
-function getAccessIssuer(env) {
-  const teamDomain = env.ACCESS_TEAM_DOMAIN?.trim();
-  return teamDomain ? `https://${teamDomain}` : "";
+function getSupabaseJwksUrl(env) {
+  const issuer = getSupabaseIssuer(env);
+  return issuer ? `${issuer}/.well-known/jwks.json` : "";
+}
+
+function getSupabaseAudience(env) {
+  return env.SUPABASE_JWT_AUDIENCE?.trim() || "authenticated";
 }
 
 function createHttpError(status, message, headers = {}) {
@@ -134,40 +139,45 @@ async function logAuditEvent(request, env, event) {
   }
 }
 
-async function verifyAccessJwt(request, env, accessEmail) {
-  const issuer = getAccessIssuer(env);
-  const audiences = getAccessAudiences(env);
-  if (!issuer || !audiences.length) return;
-
-  const assertion = request.headers.get("Cf-Access-Jwt-Assertion") || "";
-  if (!assertion) {
-    throw createHttpError(401, "Access token missing");
+async function verifySupabaseJwt(request, env) {
+  const issuer = getSupabaseIssuer(env);
+  const jwksUrl = getSupabaseJwksUrl(env);
+  if (!issuer || !jwksUrl) {
+    throw createHttpError(500, "Supabase auth is not configured");
   }
 
-  const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
-  const { payload } = await jwtVerify(assertion, jwks, {
+  const authHeader = request.headers.get("Authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (!token) {
+    throw createHttpError(401, "Login required");
+  }
+
+  const jwks = createRemoteJWKSet(new URL(jwksUrl));
+  const { payload } = await jwtVerify(token, jwks, {
     issuer,
-    audience: audiences,
+    audience: getSupabaseAudience(env),
   });
 
-  const jwtEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
-  if (!jwtEmail || jwtEmail !== accessEmail) {
-    throw createHttpError(403, "Access identity mismatch");
+  const ownerId = typeof payload.sub === "string" ? payload.sub.trim() : "";
+  const ownerEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  if (!ownerId || !ownerEmail) {
+    throw createHttpError(403, "Supabase identity is incomplete");
   }
+
+  return { ownerId, ownerEmail };
 }
 
 async function getRequestIdentity(request, env) {
-  const accessEmail = (request.headers.get("Cf-Access-Authenticated-User-Email") || "").trim().toLowerCase();
-  const allowedEmails = getAllowedEmails(env);
+  const authHeader = request.headers.get("Authorization") || "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (bearerToken && env.API_TOKEN && bearerToken === env.API_TOKEN) {
+    const fallbackOwnerEmail = (env.ADMIN_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
+    const fallbackOwnerId = (env.ADMIN_FALLBACK_OWNER_ID || fallbackOwnerEmail || "admin-token").trim();
+    return { ownerId: fallbackOwnerId, ownerEmail: fallbackOwnerEmail };
+  }
 
-  if (accessEmail) {
-    await verifyAccessJwt(request, env, accessEmail);
-
-    if (allowedEmails.length && !allowedEmails.includes(accessEmail)) {
-      throw createHttpError(403, "Access denied");
-    }
-
-    return { ownerEmail: accessEmail };
+  if (bearerToken) {
+    return await verifySupabaseJwt(request, env);
   }
 
   const expectedToken = env.API_TOKEN;
@@ -175,14 +185,13 @@ async function getRequestIdentity(request, env) {
     throw createHttpError(401, "Login required");
   }
 
-  const authHeader = request.headers.get("Authorization") || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (token !== expectedToken) {
+  if (bearerToken !== expectedToken) {
     throw createHttpError(401, "Unauthorized");
   }
 
-  const fallbackOwner = (env.ACCESS_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
-  return { ownerEmail: fallbackOwner };
+  const fallbackOwnerEmail = (env.ADMIN_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
+  const fallbackOwnerId = (env.ADMIN_FALLBACK_OWNER_ID || fallbackOwnerEmail || "admin-token").trim();
+  return { ownerId: fallbackOwnerId, ownerEmail: fallbackOwnerEmail };
 }
 
 function mapLogRow(row) {
@@ -222,6 +231,7 @@ function mapSessionRow(row) {
 function buildWhoAmI(identity) {
   return {
     authenticated: true,
+    userId: identity.ownerId,
     email: identity.ownerEmail,
   };
 }
@@ -248,7 +258,7 @@ async function assertWriteRateLimit(request, url, env, identity) {
   const maxRequests = getRateLimitMax(env);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const bucket = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
-  const bucketKey = `${identity.ownerEmail}:${request.method}:${url.pathname}:${bucket}`;
+  const bucketKey = `${identity.ownerId}:${request.method}:${url.pathname}:${bucket}`;
 
   await db.prepare(`
     INSERT INTO request_rate_limits (bucket_key, window_start, request_count, updated_at)
@@ -292,17 +302,17 @@ async function handleSnapshot(env, identity) {
   const logsResult = await db.prepare(`
     SELECT timestamp, date, program, day_type, exercise, set_number, target, completed, is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes
     FROM workout_logs
-    WHERE owner_email = ? OR owner_email = ''
+    WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY timestamp DESC
     LIMIT 250
-  `).bind(identity.ownerEmail).all();
+  `).bind(identity.ownerId, identity.ownerEmail).all();
   const sessionsResult = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
-    WHERE owner_email = ? OR owner_email = ''
+    WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY date DESC, session_id DESC
     LIMIT 50
-  `).bind(identity.ownerEmail).all();
+  `).bind(identity.ownerId, identity.ownerEmail).all();
 
   return {
     logs: (logsResult.results || []).map(mapLogRow),
@@ -315,10 +325,10 @@ async function handleHistorySummary(env, identity) {
   const sessionsResult = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
-    WHERE owner_email = ? OR owner_email = ''
+    WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY date DESC, session_id DESC
     LIMIT 50
-  `).bind(identity.ownerEmail).all();
+  `).bind(identity.ownerId, identity.ownerEmail).all();
 
   const sessions = (sessionsResult.results || []).map(mapSessionRow);
   if (!sessions.length) return { history: [] };
@@ -327,9 +337,9 @@ async function handleHistorySummary(env, identity) {
   const logsResult = await db.prepare(`
     SELECT session_id, exercise, target, completed, is_time, weight_guide
     FROM workout_logs
-    WHERE (owner_email = ? OR owner_email = '') AND session_id IN (${placeholders})
+    WHERE (owner_id = ? OR (owner_id = '' AND owner_email = ?)) AND session_id IN (${placeholders})
     ORDER BY timestamp DESC
-  `).bind(identity.ownerEmail, ...sessions.map((session) => session.sessionId)).all();
+  `).bind(identity.ownerId, identity.ownerEmail, ...sessions.map((session) => session.sessionId)).all();
 
   const logsBySession = (logsResult.results || []).reduce((acc, row) => {
     if (!acc[row.session_id]) acc[row.session_id] = {};
@@ -372,8 +382,8 @@ async function handleLogCreate(request, env, identity) {
   await db.prepare(`
     INSERT INTO workout_logs (
       timestamp, date, program, day_type, exercise, set_number, target, completed,
-      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.timestamp,
     payload.date || "",
@@ -390,6 +400,7 @@ async function handleLogCreate(request, env, identity) {
     payload.sessionId,
     payload.durationMinutes || 0,
     identity.ownerEmail,
+    identity.ownerId,
   ).run();
 
   return json({ ok: true }, request, env);
@@ -405,8 +416,8 @@ async function handleSessionCreate(request, env, identity) {
   await db.prepare(`
     INSERT OR REPLACE INTO session_history (
       session_id, date, program, day_type, duration_minutes, sets_completed,
-      note, available_weights, warmup_completed, stretch_completed, owner_email
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      note, available_weights, warmup_completed, stretch_completed, owner_email, owner_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.sessionId,
     payload.date,
@@ -419,6 +430,7 @@ async function handleSessionCreate(request, env, identity) {
     payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted ? 1 : 0,
     identity.ownerEmail,
+    identity.ownerId,
   ).run();
 
   return json({ ok: true }, request, env);
@@ -430,8 +442,8 @@ async function handleSessionDelete(sessionId, request, env, identity) {
   }
 
   const db = ensureDb(env);
-  await db.prepare(`DELETE FROM workout_logs WHERE session_id = ? AND (owner_email = ? OR owner_email = '')`).bind(sessionId, identity.ownerEmail).run();
-  await db.prepare(`DELETE FROM session_history WHERE session_id = ? AND (owner_email = ? OR owner_email = '')`).bind(sessionId, identity.ownerEmail).run();
+  await db.prepare(`DELETE FROM workout_logs WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))`).bind(sessionId, identity.ownerId, identity.ownerEmail).run();
+  await db.prepare(`DELETE FROM session_history WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))`).bind(sessionId, identity.ownerId, identity.ownerEmail).run();
 
   return json({ ok: true, sessionId }, request, env);
 }
@@ -450,8 +462,8 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
   const existing = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
-    WHERE session_id = ? AND (owner_email = ? OR owner_email = '')
-  `).bind(sessionId, identity.ownerEmail).first();
+    WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))
+  `).bind(sessionId, identity.ownerId, identity.ownerEmail).first();
 
   if (!existing) {
     return json({ error: "Session not found" }, request, env, { status: 404 });
@@ -459,15 +471,17 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
 
   await db.prepare(`
     UPDATE session_history
-    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?
-    WHERE session_id = ? AND (owner_email = ? OR owner_email = '')
+    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?, owner_id = ?
+    WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))
   `).bind(
     payload.note ?? existing.note,
     payload.availableWeights ?? existing.available_weights,
     payload.warmupCompleted === undefined ? existing.warmup_completed : payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted === undefined ? existing.stretch_completed : payload.stretchCompleted ? 1 : 0,
     identity.ownerEmail,
+    identity.ownerId,
     sessionId,
+    identity.ownerId,
     identity.ownerEmail,
   ).run();
 

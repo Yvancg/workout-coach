@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Play, RotateCcw, Save, TimerReset } from "lucide-react";
+import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, RotateCcw, Save, TimerReset } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
 
 export function SessionTab({
@@ -14,17 +14,18 @@ export function SessionTab({
   DEFAULT_REST_SECONDS,
   onExerciseImageError,
   isAlternateExercise,
-  updateState,
   startSession,
   beginProgramAfterWarmup,
   toggleRepGuide,
   restartRepGuide,
   toggleSetTimer,
   resetSetTimer,
+  toggleRestTimer,
   completeSet,
   skipRest,
   resetSession,
   finishSession,
+  navigateToToday,
 }) {
   const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
 
@@ -142,10 +143,10 @@ export function SessionTab({
               <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
-                <div className="text-sm font-bold">{repGuideLabel} • 2-2-3 tempo with 1s reset {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
+                <div className="text-sm font-bold">{repGuideLabel} • up, 2, hold, 2, down, 2, 3, hold {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}><RotateCcw className="mr-2 h-5 w-5" /> Restart</Button>
-                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}><Play className="mr-2 h-5 w-5" /> {state.repGuideRunning ? "Pause" : "Start"}</Button>
+                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning ? "Pause" : "Start"}</Button>
                 </div>
               </div>
             ) : (
@@ -153,7 +154,7 @@ export function SessionTab({
                 <div className="text-sm font-black">Set timer</div>
                 <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}><Clock3 className="mr-2 h-5 w-5" /> {state.setTimerRunning ? "Pause" : "Start"}</Button>
+                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>{state.setTimerRunning ? <Pause className="mr-2 h-5 w-5" /> : <Clock3 className="mr-2 h-5 w-5" />} {state.setTimerRunning ? "Pause" : "Start"}</Button>
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSetTimer}><RotateCcw className="mr-2 h-5 w-5" /> Reset</Button>
                 </div>
               </div>
@@ -161,14 +162,14 @@ export function SessionTab({
 
             <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>
 
-            <div className="border-4 border-black rounded-3xl p-4 text-center space-y-2">
-                <div className="text-sm font-black">Rest timer</div>
-                <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || restSeconds })}><TimerReset className="mr-2 h-5 w-5" /> {state.restTimerRunning ? "Pause" : "Start"}</Button>
+             <div className="border-4 border-black rounded-3xl p-4 text-center space-y-2">
+                 <div className="text-sm font-black">Rest timer</div>
+                 <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
+                 <div className="grid grid-cols-2 gap-3">
+                  <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={toggleRestTimer}>{state.restTimerRunning ? <Pause className="mr-2 h-5 w-5" /> : <TimerReset className="mr-2 h-5 w-5" />} {state.restTimerRunning ? "Pause" : "Start"}</Button>
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={skipRest}><ChevronRight className="mr-2 h-5 w-5" /> Skip</Button>
-                </div>
-              </div>
+                 </div>
+               </div>
 
             {syncStatus && <div className="text-sm font-black">{syncStatus}</div>}
           </CardContent>
@@ -194,7 +195,7 @@ export function SessionTab({
         <CardContent className="p-4 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}><RotateCcw className="h-5 w-5" /> Reset</Button>
-            <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ activeTab: "today" })}><House className="h-5 w-5" /> Today</Button>
+            <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={navigateToToday}><House className="h-5 w-5" /> Today</Button>
           </div>
         </CardContent>
       </Card>
