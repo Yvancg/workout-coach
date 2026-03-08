@@ -3,6 +3,7 @@ import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import {
   Activity,
   ArrowUpRight,
+  Ellipsis,
   Play,
   RotateCcw,
   CheckCircle2,
@@ -168,6 +169,7 @@ const DEFAULT_STATE = {
 };
 
 const REP_PHASES = ["Up", "2", "Hold", "Hold", "Lower", "2", "3", "Wait"];
+const IMPORTED_IMAGE_EXTENSIONS = ["webp", "png", "jpg", "jpeg", "gif", "svg"];
 
 const EXERCISE_REFERENCES = {
   "Chair Squat": "https://athlemove.com/exercises/squat/",
@@ -292,6 +294,17 @@ function getExerciseReferenceImage(name = "") {
     .replace(/^-|-$/g, "");
 
   return `/exercise-reference/${slug}.svg`;
+}
+
+function getExerciseReferenceImageCandidates(name = "") {
+  const slug = name
+    .toLowerCase()
+    .replaceAll("/", "-")
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  const imported = IMPORTED_IMAGE_EXTENSIONS.map((ext) => `/exercise-reference/imported/${slug}.${ext}`);
+  return [...imported, getExerciseReferenceImage(name)];
 }
 
 function summarizeSessionLogs(logs, sessions) {
@@ -463,6 +476,8 @@ export default function App() {
   const [state, setState] = useState(loadState);
   const [syncStatus, setSyncStatus] = useState("");
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [exerciseImageIndex, setExerciseImageIndex] = useState(0);
+  const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
@@ -630,7 +645,8 @@ export default function App() {
   const activeThemeClass = `${state.activeTab}-theme`;
   const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
   const currentExerciseReference = currentExercise ? getExerciseReferenceUrl(currentExercise.name) : "";
-  const currentExerciseImage = currentExercise ? getExerciseReferenceImage(currentExercise.name) : "";
+  const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
+  const currentExerciseImage = currentExerciseImages[exerciseImageIndex] || currentExerciseImages.at(-1) || "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(state.logs, state.history).slice(0, 8), [state.logs, state.history]);
   const repGuideLabel = currentExercise?.isTime
     ? ""
@@ -647,6 +663,10 @@ export default function App() {
   ];
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
+
+  useEffect(() => {
+    setExerciseImageIndex(0);
+  }, [currentExercise?.name]);
 
   const startSession = () => {
     const sessionId = `${Date.now()}`;
@@ -773,6 +793,26 @@ export default function App() {
       return true;
     } catch {
       setSyncStatus("Cloudflare delete failed. Local session removed.");
+      return false;
+    }
+  };
+
+  const updateSessionRemote = async (sessionId, sessionPatch) => {
+    const apiBase = getSyncApiBase(state.syncApiUrl);
+    if (apiBase === null) return true;
+
+    try {
+      setSyncStatus("Updating session in Cloudflare...");
+      const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sessionPatch),
+      });
+      if (!response.ok) throw new Error("update failed");
+      setSyncStatus("Session updated in Cloudflare");
+      return true;
+    } catch {
+      setSyncStatus("Cloudflare update failed. Local session updated.");
       return false;
     }
   };
@@ -925,6 +965,31 @@ export default function App() {
       }));
       await deleteSessionRemote(sessionId);
     });
+  };
+
+  const editSession = (session) => {
+    const nextNote = window.prompt("Update session note", session.note || "");
+    if (nextNote === null) return;
+
+    const nextWeights = window.prompt("Update available weights", session.availableWeights || "");
+    if (nextWeights === null) return;
+
+    const nextWarmup = window.confirm("Mark warm up as completed? Click Cancel for not completed.");
+    const nextStretch = window.confirm("Mark stretch as completed? Click Cancel for not completed.");
+
+    const patch = {
+      note: nextNote,
+      availableWeights: nextWeights,
+      warmupCompleted: nextWarmup,
+      stretchCompleted: nextStretch,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      history: prev.history.map((item) => item.sessionId === session.sessionId ? { ...item, ...patch } : item),
+    }));
+    setOpenHistoryMenuId(null);
+    updateSessionRemote(session.sessionId, patch);
   };
 
   const toggleRepGuide = () => {
@@ -1230,7 +1295,12 @@ export default function App() {
                   <div className="border-4 border-black rounded-2xl p-3">
                     <div className="text-sm font-black mb-2">Coaching cues</div>
                     <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
-                      <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} />
+                      <img
+                        className="exercise-reference-image"
+                        src={currentExerciseImage}
+                        alt={`${currentExercise.name} visual reference`}
+                        onError={() => setExerciseImageIndex((prev) => Math.min(prev + 1, currentExerciseImages.length - 1))}
+                      />
                     </div>
                     <ul className="space-y-1">
                       {currentExercise.cues?.map((cue) => (
@@ -1356,12 +1426,26 @@ export default function App() {
                 sessionSummaries.map((session) => (
                   <div key={session.sessionId} className="history-session-group">
                     <div className="history-session-head">
+                      <div className="history-session-topline">
+                        <div>
                       <div className="text-lg font-black">{session.date} • {session.program}</div>
                       <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets</div>
                       <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
                       {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
                       {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
-                      <button className="history-delete" onClick={() => deleteSession(session.sessionId)}>Delete session</button>
+                        </div>
+                        <div className="history-menu-wrap">
+                          <button className="history-menu-trigger" onClick={() => setOpenHistoryMenuId((prev) => prev === session.sessionId ? null : session.sessionId)} aria-label="Open session actions">
+                            <Ellipsis className="h-5 w-5" />
+                          </button>
+                          {openHistoryMenuId === session.sessionId && (
+                            <div className="history-menu">
+                              <button className="history-menu-item" onClick={() => editSession(session)}>Edit session</button>
+                              <button className="history-menu-item history-menu-danger" onClick={() => { setOpenHistoryMenuId(null); deleteSession(session.sessionId); }}>Delete session</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <div className="history-exercise-list">
                       {session.exercises.map((exercise) => (

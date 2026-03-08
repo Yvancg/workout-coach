@@ -1,5 +1,8 @@
 # Third-Party Notices
 
+Project license:
+- this repository is distributed under the GNU GPLv3
+
 ## Exercise Reference Assets
 
 This project is being prepared to support locally cached exercise reference media derived from the official ExerciseDB media source for the exact exercises used in this app.
@@ -24,4 +27,5 @@ Selected workflow:
 - import only app-scoped exercise images for movements actually used in this project
 - stage source URLs in `scripts/exercise-asset-manifest.json`
 - download assets into `public/exercise-reference/imported/`
+- the app will prefer imported files automatically when present and fall back to local placeholders otherwise
 - keep placeholder cards until the imported files and notice text are verified

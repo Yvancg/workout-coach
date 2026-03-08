@@ -84,6 +84,7 @@ Then either:
 - `GET /api/snapshot`
 - `POST /api/logs`
 - `POST /api/sessions`
+- `PATCH /api/sessions/:sessionId`
 - `DELETE /api/sessions/:sessionId`
 
 ## Stored Session Metadata
@@ -99,6 +100,7 @@ D1 session records currently include:
 Current state:
 - `public/exercise-reference/` contains local placeholder reference cards used by the UI.
 - these are safe local stand-ins and do not hotlink external media
+- when imported ExerciseDB assets exist in `public/exercise-reference/imported/`, the app prefers them automatically and falls back to the local placeholder cards
 
 Planned next step:
 - replace placeholders with true ExerciseDB-derived assets from the official ExerciseDB media source, imported only for the exercises used by this app
@@ -119,4 +121,4 @@ See `THIRD_PARTY_NOTICES.md` for the repository policy around third-party exerci
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE`.
+This project is licensed under the GNU GPLv3. See `LICENSE`.

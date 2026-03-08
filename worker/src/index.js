@@ -1,6 +1,6 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -155,6 +155,42 @@ async function handleSessionDelete(sessionId, env) {
   return json({ ok: true, sessionId });
 }
 
+async function handleSessionUpdate(sessionId, request, env) {
+  if (!sessionId) {
+    return json({ error: "Missing session id" }, { status: 400 });
+  }
+
+  const payload = await readJson(request);
+  if (!payload) {
+    return json({ error: "Invalid session payload" }, { status: 400 });
+  }
+
+  const db = ensureDb(env);
+  const existing = await db.prepare(`
+    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
+    FROM session_history
+    WHERE session_id = ?
+  `).bind(sessionId).first();
+
+  if (!existing) {
+    return json({ error: "Session not found" }, { status: 404 });
+  }
+
+  await db.prepare(`
+    UPDATE session_history
+    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?
+    WHERE session_id = ?
+  `).bind(
+    payload.note ?? existing.note,
+    payload.availableWeights ?? existing.available_weights,
+    payload.warmupCompleted === undefined ? existing.warmup_completed : payload.warmupCompleted ? 1 : 0,
+    payload.stretchCompleted === undefined ? existing.stretch_completed : payload.stretchCompleted ? 1 : 0,
+    sessionId,
+  ).run();
+
+  return json({ ok: true, sessionId });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -183,6 +219,11 @@ export default {
       if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
         const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
         return await handleSessionDelete(sessionId, env);
+      }
+
+      if (request.method === "PATCH" && url.pathname.startsWith("/api/sessions/")) {
+        const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
+        return await handleSessionUpdate(sessionId, request, env);
       }
 
       return json({ error: "Not found" }, { status: 404 });
