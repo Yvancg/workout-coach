@@ -4,9 +4,9 @@ compatibility_date = "2026-03-08"
 
 [vars]
 ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
-SUPABASE_URL = "https://your-project-ref.supabase.co"
+SUPABASE_URL = "https://acdlnecvjwctpgqjgnsr.supabase.co"
 SUPABASE_JWT_AUDIENCE = "authenticated"
-ADMIN_FALLBACK_OWNER_EMAIL = "you@example.com"
+ADMIN_FALLBACK_OWNER_EMAIL = "yvancg@gmail.com"
 ADMIN_FALLBACK_OWNER_ID = "admin-script"
 WRITE_RATE_LIMIT_MAX = "60"
 WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
