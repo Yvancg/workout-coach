@@ -5,11 +5,16 @@ Project license:
 
 ## Exercise Reference Assets
 
-This project is being prepared to support locally cached exercise reference media derived from the official ExerciseDB media source for the exact exercises used in this app.
+This project is prepared to support locally cached exercise reference media derived from the official ExerciseDB source for the exact exercises used in this app.
 
 Current state:
 - `public/exercise-reference/` contains locally generated placeholder reference cards created for this project.
 - No third-party ExerciseDB-derived media files are currently committed in this repository.
+
+Current intended usage:
+- personal-use local caching from the ExerciseDB free tier
+- import only the exercise images actually needed by this app
+- prefer imported local files in the app, with placeholder fallback when an imported file is missing
 
 Before importing real ExerciseDB-derived assets into this repository, verify:
 - the exact official ExerciseDB source URL being used for each imported asset

@@ -1,8 +1,8 @@
 {
-  "source": "Official ExerciseDB media source, app-scoped cached images only",
+  "source": "Official ExerciseDB source, free-tier personal-use local cache only",
   "notes": [
     "Import only the exercises actually used by this app.",
-    "Verify ExerciseDB redistribution terms before committing downloaded files.",
+    "Use the ExerciseDB free tier only for personal-use local caching unless broader rights are confirmed.",
     "Store imported files in public/exercise-reference/imported/ and update THIRD_PARTY_NOTICES.md."
   ],
   "exercises": [

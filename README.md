@@ -103,11 +103,11 @@ Current state:
 - when imported ExerciseDB assets exist in `public/exercise-reference/imported/`, the app prefers them automatically and falls back to the local placeholder cards
 
 Planned next step:
-- replace placeholders with true ExerciseDB-derived assets from the official ExerciseDB media source, imported only for the exercises used by this app
+- replace placeholders with true ExerciseDB-derived assets from the official ExerciseDB source, cached locally only for the exercises used by this app
 
 Recommended import workflow:
-1. fill in `scripts/exercise-asset-manifest.json` with the exact official ExerciseDB source URLs for each exercise used here
-2. confirm the license/terms for redistribution in this repository
+1. use the ExerciseDB free tier for personal-use lookup/downloads
+2. fill in `scripts/exercise-asset-manifest.json` with the exact ExerciseDB image source URLs for each exercise used here
 3. run:
 
 ```bash
@@ -115,7 +115,8 @@ npm run exercise-assets:import
 ```
 
 4. review imported files in `public/exercise-reference/imported/`
-5. update `THIRD_PARTY_NOTICES.md` with attribution/source details before committing any real third-party media
+5. keep the files local/personal-use unless you later confirm broader redistribution rights
+6. update `THIRD_PARTY_NOTICES.md` with source details if you keep imported third-party media in the repo
 
 See `THIRD_PARTY_NOTICES.md` for the repository policy around third-party exercise media.
 
