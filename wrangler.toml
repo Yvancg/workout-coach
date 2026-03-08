@@ -15,4 +15,4 @@ AUDIT_LOG_ENABLED = "true"
 [[d1_databases]]
 binding = "DB"
 database_name = "workout_coach"
-database_id = "Yd6e1da4e-d389-4813-8b9b-09c42e3a7465"
+database_id = "d6e1da4e-d389-4813-8b9b-09c42e3a7465"
