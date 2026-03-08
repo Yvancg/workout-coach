@@ -714,4 +714,8 @@ iframe {
   .text-xl { font-size: 1.32rem; }
   .text-2xl { font-size: 1.62rem; }
   .text-3xl { font-size: 2rem; }
+
+  .ui-button.text-lg { font-size: 1.02rem; }
+  .ui-button.text-xl { font-size: 1.08rem; }
+  .ui-button.text-2xl { font-size: 1.16rem; }
 }

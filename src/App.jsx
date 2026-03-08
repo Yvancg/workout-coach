@@ -24,6 +24,24 @@ import "./App.css";
 
 const STORAGE_KEY = "yvan-workout-coach-v2";
 const DEFAULT_REST_SECONDS = 30;
+const PLAYFUL_LINES = {
+  sessionStart: ["Warm up first. Let us get you moving.", "Warm up first. Nice and easy to start."],
+  warmup: ["Easy now. Loosen everything up.", "Nice and smooth. Wake the body up.", "Good. Take your time here."],
+  firstExercise: ["First exercise. Let us go.", "First exercise. Stay smooth and strong."],
+  nextExercise: ["Next exercise. Keep that momentum.", "Next exercise. You are doing great.", "Alright, next one. Stay with me."],
+  sessionComplete: ["Session complete. Nice work.", "Session complete. You crushed that."],
+  stretch: ["Workout complete. Finish with stretches.", "Nice work. Finish strong with stretches."],
+  stretchCue: ["Slow it down now.", "Nice and easy here.", "Breathe and let go of the tension."],
+  restDone: ["Rest over. Back to it.", "Rest over. Let us go again."],
+  repPraise: ["Nice.", "Good.", "Strong.", "That is it."],
+  repPush: ["Stay with it.", "Keep it smooth.", "One more clean one.", "You have got this."],
+  phaseUp: ["Up.", "Lift.", "Drive up."],
+  phaseTwo: ["Two.", "And two."],
+  phaseHold: ["Hold.", "Stay there."],
+  phaseLower: ["Lower.", "Ease down."],
+  phaseThree: ["Three.", "Nice and slow."],
+  phaseWait: ["Reset.", "Breathe.", "Stay with it."],
+};
 const SHEET_HEADERS = [
   "timestamp",
   "date",
@@ -384,12 +402,48 @@ function getSyncApiBase(url = "") {
   return null;
 }
 
-function speak(text, enabled) {
+function pickLine(lines, seed = 0) {
+  if (!lines?.length) return "";
+  return lines[seed % lines.length];
+}
+
+function getPhaseCue(phase, seed = 0) {
+  if (phase === "Up") return pickLine(PLAYFUL_LINES.phaseUp, seed);
+  if (phase === "2") return pickLine(PLAYFUL_LINES.phaseTwo, seed);
+  if (phase === "Hold") return pickLine(PLAYFUL_LINES.phaseHold, seed);
+  if (phase === "Lower") return pickLine(PLAYFUL_LINES.phaseLower, seed);
+  if (phase === "3") return pickLine(PLAYFUL_LINES.phaseThree, seed);
+  if (phase === "Wait") return pickLine(PLAYFUL_LINES.phaseWait, seed);
+  return phase;
+}
+
+function speakWithStyle(text, enabled, mode = "default") {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+  const voices = window.speechSynthesis.getVoices();
+  const preferredVoice = voices.find((voice) =>
+    /Google UK English Female|Google US English|Samantha|Karen|Moira|Daniel/i.test(voice.name),
+  ) || voices.find((voice) => /en-/i.test(voice.lang)) || null;
+
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1;
-  utterance.pitch = 1;
+  if (preferredVoice) utterance.voice = preferredVoice;
+  utterance.lang = preferredVoice?.lang || "en-US";
+
+  if (mode === "warmup") {
+    utterance.rate = 0.86;
+    utterance.pitch = 0.88;
+  } else if (mode === "stretch") {
+    utterance.rate = 0.82;
+    utterance.pitch = 0.85;
+  } else if (mode === "set") {
+    utterance.rate = 0.93;
+    utterance.pitch = 0.92;
+  } else {
+    utterance.rate = 0.9;
+    utterance.pitch = 0.9;
+  }
+
   window.speechSynthesis.speak(utterance);
 }
 
@@ -529,7 +583,7 @@ export default function App() {
       setTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.setDurationRemaining <= 1) {
-            speak("Time", prev.soundEnabled);
+            speakWithStyle("Time. Nice control.", prev.soundEnabled, prev.sessionStage === "stretch" ? "stretch" : "set");
             return { ...prev, setDurationRemaining: 0, setTimerRunning: false };
           }
           return { ...prev, setDurationRemaining: prev.setDurationRemaining - 1 };
@@ -544,7 +598,7 @@ export default function App() {
       restTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.restRemaining <= 1) {
-            speak("Rest over. Next set.", prev.soundEnabled);
+            speakWithStyle(pickLine(PLAYFUL_LINES.restDone, prev.currentSet), prev.soundEnabled, "set");
             return { ...prev, restRemaining: 0, restTimerRunning: false };
           }
           return { ...prev, restRemaining: prev.restRemaining - 1 };
@@ -567,7 +621,11 @@ export default function App() {
 
         if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
           const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
-          speak(REP_PHASES[nextPhaseIndex], prev.soundEnabled);
+          const nextPhase = REP_PHASES[nextPhaseIndex];
+          const nextCue = nextPhase === "Wait"
+            ? `${getPhaseCue(nextPhase, prev.currentRep + nextPhaseIndex)} ${pickLine(PLAYFUL_LINES.repPush, prev.currentRep + nextPhaseIndex)}`
+            : getPhaseCue(nextPhase, prev.currentRep + nextPhaseIndex);
+          speakWithStyle(nextCue, prev.soundEnabled, "set");
           return {
             ...prev,
             repGuidePhaseIndex: nextPhaseIndex,
@@ -577,7 +635,7 @@ export default function App() {
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            speak("Right. Up", prev.soundEnabled);
+            speakWithStyle(`${pickLine(PLAYFUL_LINES.repPraise, prev.currentRep)} Right side. ${getPhaseCue("Up", prev.currentRep + 1)}`, prev.soundEnabled, "set");
             return {
               ...prev,
               repGuideSide: "right",
@@ -588,7 +646,7 @@ export default function App() {
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          speak(done ? `Rep ${nextRep} complete. Set complete.` : `Rep ${nextRep} complete. Left. Up`, prev.soundEnabled);
+          speakWithStyle(done ? `Rep ${nextRep} complete. Set complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)}` : `Rep ${nextRep} complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)} Left side. ${getPhaseCue("Up", nextRep)}`, prev.soundEnabled, "set");
 
           return {
             ...prev,
@@ -602,7 +660,7 @@ export default function App() {
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        speak(done ? `Rep ${nextRep} complete. Set complete.` : `Rep ${nextRep} complete. Up`, prev.soundEnabled);
+        speakWithStyle(done ? `Rep ${nextRep} complete. Set complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)}` : `Rep ${nextRep} complete. ${pickLine(PLAYFUL_LINES.repPraise, nextRep)} ${getPhaseCue("Up", nextRep)}`, prev.soundEnabled, "set");
 
         return {
           ...prev,
@@ -684,7 +742,7 @@ export default function App() {
       stretchDone: false,
     });
     runHaptic("medium");
-    speak(`Warm up first. ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled);
+    speakWithStyle(`${pickLine(PLAYFUL_LINES.sessionStart, 0)} ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled, "warmup");
   };
 
   const beginProgramAfterWarmup = () => {
@@ -704,7 +762,11 @@ export default function App() {
       restRemaining: 0,
       restTimerRunning: false,
     });
-    speak(`First exercise. ${firstExercise?.name || "Begin"}.`, state.soundEnabled);
+    speakWithStyle(`${pickLine(PLAYFUL_LINES.firstExercise, 0)} ${firstExercise?.name || "Begin"}.`, state.soundEnabled, "set");
+  };
+
+  const acknowledgeWarmupVideo = () => {
+    speakWithStyle(pickLine(PLAYFUL_LINES.warmup, state.logs.length), state.soundEnabled, "warmup");
   };
 
   const finishSession = () => {
@@ -744,7 +806,7 @@ export default function App() {
     });
     syncSessionToCloudflare(sessionRecord);
     runHaptic("success");
-    speak("Session complete. Good work.", state.soundEnabled);
+    speakWithStyle(pickLine(PLAYFUL_LINES.sessionComplete, state.history.length), state.soundEnabled, "stretch");
   };
 
   const installApp = async () => {
@@ -870,7 +932,7 @@ export default function App() {
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
       });
-      speak(`Next exercise. ${nextExercise?.name || "Continue"}.`, state.soundEnabled);
+      speakWithStyle(`${pickLine(PLAYFUL_LINES.nextExercise, state.exerciseIndex)} ${nextExercise?.name || "Continue"}.`, state.soundEnabled, "set");
       return;
     }
 
@@ -885,7 +947,7 @@ export default function App() {
       repGuidePhaseRemaining: 0,
       repGuideSide: "left",
     });
-    speak("Workout complete. Finish with stretches.", state.soundEnabled);
+    speakWithStyle(`${pickLine(PLAYFUL_LINES.stretch, state.exerciseIndex)} ${pickLine(PLAYFUL_LINES.stretchCue, state.exerciseIndex)}`, state.soundEnabled, "stretch");
   };
 
   const completeSet = async () => {
@@ -1003,7 +1065,13 @@ export default function App() {
       repGuidePhaseRemaining: 1,
       repGuideSide: nextSide,
     });
-    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. Up` : "Up", state.soundEnabled);
+    speakWithStyle(
+      isAlternateExercise(currentExercise.name)
+        ? `${pickLine(PLAYFUL_LINES.repPraise, state.currentRep)} ${nextSide === "left" ? "Left side" : "Right side"}. ${getPhaseCue("Up", state.currentRep)}`
+        : `${pickLine(PLAYFUL_LINES.repPraise, state.currentRep)} ${getPhaseCue("Up", state.currentRep)}`,
+      state.soundEnabled,
+      "set",
+    );
   };
 
   const restartRepGuide = () => {
@@ -1255,6 +1323,9 @@ export default function App() {
                       allowFullScreen
                     />
                   </div>
+                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={acknowledgeWarmupVideo}>
+                    <Volume2 className="h-5 w-5" /> Warmup Cue
+                  </Button>
                   <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={beginProgramAfterWarmup}>
                     <CheckCircle2 className="mr-2 h-5 w-5" /> Warm Up Done, Start Program
                   </Button>
@@ -1384,6 +1455,9 @@ export default function App() {
                       allowFullScreen
                     />
                   </div>
+                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => speakWithStyle(pickLine(PLAYFUL_LINES.stretchCue, state.history.length), state.soundEnabled, "stretch")}>
+                    <Volume2 className="h-5 w-5" /> Stretch Cue
+                  </Button>
                   <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={finishSession}>
                     <CheckCircle2 className="mr-2 h-5 w-5" /> Stretch Done, Finish Session
                   </Button>
