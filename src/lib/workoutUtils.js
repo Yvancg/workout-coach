@@ -230,10 +230,9 @@ export function getSyncApiBase(url = "") {
   return null;
 }
 
-export function getSyncHeaders(syncApiToken = "", includeJson = false) {
+export function getSyncHeaders(includeJson = false) {
   const headers = {};
   if (includeJson) headers["Content-Type"] = "application/json";
-  if (syncApiToken) headers.Authorization = `Bearer ${syncApiToken}`;
   return headers;
 }
 

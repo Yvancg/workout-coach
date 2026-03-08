@@ -151,7 +151,6 @@ export const DEFAULT_STATE = {
   sessionId: null,
   logs: [],
   syncApiUrl: import.meta.env.VITE_SYNC_API_URL || "",
-  syncApiToken: "",
   soundEnabled: true,
   history: [],
   todayNote: "",

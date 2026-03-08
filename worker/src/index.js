@@ -15,6 +15,7 @@ function getCorsHeaders(request, env) {
 
   return {
     "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     Vary: "Origin",
@@ -69,9 +70,30 @@ function assertAllowedOrigin(request, env) {
   }
 }
 
-function assertAuthorized(request, env) {
+function getAllowedEmails(env) {
+  return env.ACCESS_ALLOW_EMAILS?.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean) || [];
+}
+
+function getRequestIdentity(request, env) {
+  const accessEmail = (request.headers.get("Cf-Access-Authenticated-User-Email") || "").trim().toLowerCase();
+  const allowedEmails = getAllowedEmails(env);
+
+  if (accessEmail) {
+    if (allowedEmails.length && !allowedEmails.includes(accessEmail)) {
+      const error = new Error("Access denied");
+      error.status = 403;
+      throw error;
+    }
+
+    return { ownerEmail: accessEmail };
+  }
+
   const expectedToken = env.API_TOKEN;
-  if (!expectedToken) return;
+  if (!expectedToken) {
+    const error = new Error("Login required");
+    error.status = 401;
+    throw error;
+  }
 
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -80,6 +102,9 @@ function assertAuthorized(request, env) {
     error.status = 401;
     throw error;
   }
+
+  const fallbackOwner = (env.ACCESS_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
+  return { ownerEmail: fallbackOwner };
 }
 
 function mapLogRow(row) {
@@ -116,20 +141,22 @@ function mapSessionRow(row) {
   };
 }
 
-async function handleSnapshot(env) {
+async function handleSnapshot(env, identity) {
   const db = ensureDb(env);
   const logsResult = await db.prepare(`
     SELECT timestamp, date, program, day_type, exercise, set_number, target, completed, is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes
     FROM workout_logs
+    WHERE owner_email = ? OR owner_email = ''
     ORDER BY timestamp DESC
     LIMIT 250
-  `).all();
+  `).bind(identity.ownerEmail).all();
   const sessionsResult = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
+    WHERE owner_email = ? OR owner_email = ''
     ORDER BY date DESC, session_id DESC
     LIMIT 50
-  `).all();
+  `).bind(identity.ownerEmail).all();
 
   return {
     logs: (logsResult.results || []).map(mapLogRow),
@@ -137,14 +164,15 @@ async function handleSnapshot(env) {
   };
 }
 
-async function handleHistorySummary(env) {
+async function handleHistorySummary(env, identity) {
   const db = ensureDb(env);
   const sessionsResult = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
+    WHERE owner_email = ? OR owner_email = ''
     ORDER BY date DESC, session_id DESC
     LIMIT 50
-  `).all();
+  `).bind(identity.ownerEmail).all();
 
   const sessions = (sessionsResult.results || []).map(mapSessionRow);
   if (!sessions.length) return { history: [] };
@@ -153,9 +181,9 @@ async function handleHistorySummary(env) {
   const logsResult = await db.prepare(`
     SELECT session_id, exercise, target, completed, is_time, weight_guide
     FROM workout_logs
-    WHERE session_id IN (${placeholders})
+    WHERE (owner_email = ? OR owner_email = '') AND session_id IN (${placeholders})
     ORDER BY timestamp DESC
-  `).bind(...sessions.map((session) => session.sessionId)).all();
+  `).bind(identity.ownerEmail, ...sessions.map((session) => session.sessionId)).all();
 
   const logsBySession = (logsResult.results || []).reduce((acc, row) => {
     if (!acc[row.session_id]) acc[row.session_id] = {};
@@ -188,7 +216,7 @@ async function handleHistorySummary(env) {
   };
 }
 
-async function handleLogCreate(request, env) {
+async function handleLogCreate(request, env, identity) {
   const payload = await readJson(request);
   if (!payload?.timestamp || !payload?.exercise || !payload?.sessionId) {
     return json({ error: "Invalid log payload" }, request, env, { status: 400 });
@@ -198,8 +226,8 @@ async function handleLogCreate(request, env) {
   await db.prepare(`
     INSERT INTO workout_logs (
       timestamp, date, program, day_type, exercise, set_number, target, completed,
-      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.timestamp,
     payload.date || "",
@@ -215,12 +243,13 @@ async function handleLogCreate(request, env) {
     payload.rest || 0,
     payload.sessionId,
     payload.durationMinutes || 0,
+    identity.ownerEmail,
   ).run();
 
   return json({ ok: true }, request, env);
 }
 
-async function handleSessionCreate(request, env) {
+async function handleSessionCreate(request, env, identity) {
   const payload = await readJson(request);
   if (!payload?.sessionId || !payload?.date) {
     return json({ error: "Invalid session payload" }, request, env, { status: 400 });
@@ -230,8 +259,8 @@ async function handleSessionCreate(request, env) {
   await db.prepare(`
     INSERT OR REPLACE INTO session_history (
       session_id, date, program, day_type, duration_minutes, sets_completed,
-      note, available_weights, warmup_completed, stretch_completed
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      note, available_weights, warmup_completed, stretch_completed, owner_email
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.sessionId,
     payload.date,
@@ -243,24 +272,25 @@ async function handleSessionCreate(request, env) {
     payload.availableWeights || "",
     payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted ? 1 : 0,
+    identity.ownerEmail,
   ).run();
 
   return json({ ok: true }, request, env);
 }
 
-async function handleSessionDelete(sessionId, request, env) {
+async function handleSessionDelete(sessionId, request, env, identity) {
   if (!sessionId) {
     return json({ error: "Missing session id" }, request, env, { status: 400 });
   }
 
   const db = ensureDb(env);
-  await db.prepare(`DELETE FROM workout_logs WHERE session_id = ?`).bind(sessionId).run();
-  await db.prepare(`DELETE FROM session_history WHERE session_id = ?`).bind(sessionId).run();
+  await db.prepare(`DELETE FROM workout_logs WHERE session_id = ? AND (owner_email = ? OR owner_email = '')`).bind(sessionId, identity.ownerEmail).run();
+  await db.prepare(`DELETE FROM session_history WHERE session_id = ? AND (owner_email = ? OR owner_email = '')`).bind(sessionId, identity.ownerEmail).run();
 
   return json({ ok: true, sessionId }, request, env);
 }
 
-async function handleSessionUpdate(sessionId, request, env) {
+async function handleSessionUpdate(sessionId, request, env, identity) {
   if (!sessionId) {
     return json({ error: "Missing session id" }, request, env, { status: 400 });
   }
@@ -274,8 +304,8 @@ async function handleSessionUpdate(sessionId, request, env) {
   const existing = await db.prepare(`
     SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
     FROM session_history
-    WHERE session_id = ?
-  `).bind(sessionId).first();
+    WHERE session_id = ? AND (owner_email = ? OR owner_email = '')
+  `).bind(sessionId, identity.ownerEmail).first();
 
   if (!existing) {
     return json({ error: "Session not found" }, request, env, { status: 404 });
@@ -283,14 +313,16 @@ async function handleSessionUpdate(sessionId, request, env) {
 
   await db.prepare(`
     UPDATE session_history
-    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?
-    WHERE session_id = ?
+    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?
+    WHERE session_id = ? AND (owner_email = ? OR owner_email = '')
   `).bind(
     payload.note ?? existing.note,
     payload.availableWeights ?? existing.available_weights,
     payload.warmupCompleted === undefined ? existing.warmup_completed : payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted === undefined ? existing.stretch_completed : payload.stretchCompleted ? 1 : 0,
+    identity.ownerEmail,
     sessionId,
+    identity.ownerEmail,
   ).run();
 
   return json({ ok: true, sessionId }, request, env);
@@ -307,41 +339,36 @@ export default {
 
     try {
       assertAllowedOrigin(request, env);
+      const identity = url.pathname === "/api/health" ? null : getRequestIdentity(request, env);
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         return json({ ok: true, service: "workout-coach-api" }, request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/snapshot") {
-        assertAuthorized(request, env);
-        return json(await handleSnapshot(env), request, env);
+        return json(await handleSnapshot(env, identity), request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/history-summary") {
-        assertAuthorized(request, env);
-        return json(await handleHistorySummary(env), request, env);
+        return json(await handleHistorySummary(env, identity), request, env);
       }
 
       if (request.method === "POST" && url.pathname === "/api/logs") {
-        assertAuthorized(request, env);
-        return await handleLogCreate(request, env);
+        return await handleLogCreate(request, env, identity);
       }
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
-        assertAuthorized(request, env);
-        return await handleSessionCreate(request, env);
+        return await handleSessionCreate(request, env, identity);
       }
 
       if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
-        assertAuthorized(request, env);
         const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
-        return await handleSessionDelete(sessionId, request, env);
+        return await handleSessionDelete(sessionId, request, env, identity);
       }
 
       if (request.method === "PATCH" && url.pathname.startsWith("/api/sessions/")) {
-        assertAuthorized(request, env);
         const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
-        return await handleSessionUpdate(sessionId, request, env);
+        return await handleSessionUpdate(sessionId, request, env, identity);
       }
 
       return json({ error: "Not found" }, request, env, { status: 404 });

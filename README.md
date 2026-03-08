@@ -21,7 +21,7 @@ cp .env.example .env.local
 ```
 
 - `VITE_SYNC_API_URL` can point the app at your deployed Worker without pasting it into the UI.
-- Do not ship your real sync token in a public build. Enter it inside the app on your own device instead.
+- Do not ship your real sync token in a public build. The app is now designed to use Cloudflare Access login cookies instead.
 
 ## Cloudflare D1 Setup
 
@@ -53,13 +53,29 @@ database_id = "YOUR_REAL_DATABASE_ID"
 ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
 ```
 
-5. Create the Worker API token as a Cloudflare secret:
+5. Protect the Worker with Cloudflare Access and allow only your email.
+
+Recommended Access setup:
+
+- create a Cloudflare Access application for the Worker hostname
+- use a policy that allows only your email address
+- keep session cookies enabled for your personal devices
+
+6. Keep an admin fallback token only for scripts or emergency access:
 
 ```bash
 npx wrangler secret put API_TOKEN
 ```
 
-6. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
+7. Set the allowed Access email list and fallback owner in `wrangler.toml`:
+
+```toml
+[vars]
+ACCESS_ALLOW_EMAILS = "you@example.com"
+ACCESS_FALLBACK_OWNER_EMAIL = "you@example.com"
+```
+
+8. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
 Example `.env.local`:
 
@@ -67,15 +83,15 @@ Example `.env.local`:
 VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
 ```
 
-Then paste your private API token into the app's `Private Cloudflare API token` field on your own device. That avoids bundling the secret into a public web build.
+The app will use Cloudflare Access session cookies for authenticated sync requests. No frontend bearer token is required.
 
-7. Apply migrations locally first:
+9. Apply migrations locally first:
 
 ```bash
 npm run d1:migrate:local
 ```
 
-8. Apply migrations to Cloudflare:
+10. Apply migrations to Cloudflare:
 
 ```bash
 npm run d1:migrate:remote
@@ -103,7 +119,7 @@ npm run dev
 
 Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
 
-If you use auth locally, start the app and paste the local token into the in-app private token field.
+If you use auth locally without Access in front of the local Worker, you can still use the fallback bearer token for scripts or manual testing.
 
 ## Production Deploy
 
