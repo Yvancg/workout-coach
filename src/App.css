@@ -302,16 +302,22 @@
 
 .exercise-reference-media {
   margin-top: 0.85rem;
-  padding: 0.6rem;
-  background: #f7f4ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.9rem;
+  background: linear-gradient(180deg, #faf7f2 0%, #f4efe8 100%);
 }
 
 .exercise-reference-image {
   display: block;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
   max-height: 18rem;
   object-fit: contain;
+  border-radius: 1rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
 }
 
 .history-session-group {
