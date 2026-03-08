@@ -115,12 +115,6 @@
   color: var(--text-muted);
 }
 
-.tab-bar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
 .tab-bar-mobile {
   position: sticky;
   bottom: 1rem;
@@ -289,17 +283,6 @@
   color: var(--text);
 }
 
-.reference-link {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 0.9rem;
-  color: #9a4d16;
-  font-size: 0.92rem;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.18rem;
-}
-
 .exercise-reference-media {
   margin-top: 0.85rem;
   display: flex;
@@ -374,19 +357,6 @@
 
 .history-exercise-row {
   padding: 0.2rem 0;
-}
-
-.history-delete {
-  margin-top: 0.55rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: #9a4d16;
-  font: inherit;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 0.18rem;
-  cursor: pointer;
 }
 
 .history-menu-wrap {
@@ -671,7 +641,6 @@ iframe {
     padding-right: 0.9rem;
   }
 
-  .tab-bar,
   .tab-bar-mobile,
   .stats-grid {
     grid-template-columns: 1fr;

@@ -1,26 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
-import {
-  Activity,
-  ArrowUpRight,
-  Ellipsis,
-  Play,
-  RotateCcw,
-  CheckCircle2,
-  TimerReset,
-  Save,
-  Dumbbell,
-  Download,
-  ChevronRight,
-  Volume2,
-  VolumeX,
-  CalendarDays,
-  Clock3,
-  ListChecks,
-  House,
-  History,
-} from "lucide-react";
+import { Activity, History, House } from "lucide-react";
 import "./App.css";
+import { BottomNav } from "./components/BottomNav";
+import { HeroHeader } from "./components/HeroHeader";
+import { HistoryTab } from "./components/HistoryTab";
+import { SessionTab } from "./components/SessionTab";
+import { TodayTab } from "./components/TodayTab";
 
 const STORAGE_KEY = "yvan-workout-coach-v2";
 const DEFAULT_REST_SECONDS = 30;
@@ -273,22 +259,22 @@ function resolveWeightGuide(guide, availableWeightsInput) {
   return guide;
 }
 
-function getExerciseReferenceImage(name = "") {
-  const slug = name
+function slugifyExerciseName(name = "") {
+  return name
     .toLowerCase()
     .replaceAll("/", "-")
     .replaceAll(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function getExerciseReferenceImage(name = "") {
+  const slug = slugifyExerciseName(name);
 
   return `/exercise-reference/${slug}.svg`;
 }
 
 function getExerciseReferenceImageCandidates(name = "") {
-  const slug = name
-    .toLowerCase()
-    .replaceAll("/", "-")
-    .replaceAll(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+  const slug = slugifyExerciseName(name);
 
   const imported = IMPORTED_IMAGE_EXTENSIONS.map((ext) => `/exercise-reference/imported/${slug}.${ext}`);
   return [...imported, getExerciseReferenceImage(name)];
@@ -311,8 +297,23 @@ function getWeightTotalKg(weightGuide = "") {
 }
 
 function summarizeSessionLogs(logs, sessions) {
+  const logsBySession = logs.reduce((acc, log) => {
+    const sessionId = log.sessionId || `${log.date}-${log.program}-${log.dayType}`;
+    if (!acc[sessionId]) acc[sessionId] = [];
+    acc[sessionId].push(log);
+    return acc;
+  }, {});
+
   const grouped = sessions.map((session) => {
-    const sessionLogs = logs.filter((log) => log.sessionId === session.sessionId);
+    if (Array.isArray(session.exercises) && session.exercises.length) {
+      return {
+        ...session,
+        totalKg: session.totalKg ?? session.exercises.reduce((sum, exercise) => sum + (exercise.totalKg || 0), 0),
+        totalCompleted: session.totalCompleted ?? session.exercises.reduce((sum, exercise) => sum + (exercise.completed || 0), 0),
+      };
+    }
+
+    const sessionLogs = logsBySession[session.sessionId] || [];
     const byExercise = sessionLogs.reduce((acc, log) => {
       const key = log.exercise;
       if (!acc[key]) {
@@ -331,11 +332,12 @@ function summarizeSessionLogs(logs, sessions) {
       return acc;
     }, {});
 
+    const exercises = Object.values(byExercise);
     return {
       ...session,
-      exercises: Object.values(byExercise),
-      totalKg: Object.values(byExercise).reduce((sum, exercise) => sum + exercise.totalKg, 0),
-      totalCompleted: Object.values(byExercise).reduce((sum, exercise) => sum + exercise.completed, 0),
+      exercises,
+      totalKg: exercises.reduce((sum, exercise) => sum + exercise.totalKg, 0),
+      totalCompleted: exercises.reduce((sum, exercise) => sum + exercise.completed, 0),
     };
   });
 
@@ -400,6 +402,14 @@ function getSyncApiBase(url = "") {
   }
 
   return null;
+}
+
+function getSyncHeaders(includeJson = false) {
+  const headers = {};
+  const token = import.meta.env.VITE_SYNC_API_TOKEN;
+  if (includeJson) headers["Content-Type"] = "application/json";
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
 
 function pickLine(lines, seed = 0) {
@@ -480,47 +490,6 @@ async function runHaptic(type = "light") {
   }
 }
 
-function Card({ className = "", children, ...props }) {
-  return <div className={`surface ${className}`.trim()} {...props}>{children}</div>;
-}
-
-function CardHeader({ className = "", children, ...props }) {
-  return <div className={`section-header ${className}`.trim()} {...props}>{children}</div>;
-}
-
-function CardTitle({ className = "", children, ...props }) {
-  return <h2 className={`section-title ${className}`.trim()} {...props}>{children}</h2>;
-}
-
-function CardContent({ className = "", children, ...props }) {
-  return <div className={`section-content ${className}`.trim()} {...props}>{children}</div>;
-}
-
-function Button({ className = "", children, ...props }) {
-  return (
-    <button className={`ui-button ${className}`.trim()} {...props}>
-      {children}
-    </button>
-  );
-}
-
-function Input({ className = "", ...props }) {
-  return <input className={`ui-input ${className}`.trim()} {...props} />;
-}
-
-function Progress({ value = 0, className = "", ...props }) {
-  return (
-    <div className={`progress-track ${className}`.trim()} {...props}>
-      <div
-        className="progress-fill"
-        style={{
-          width: `${Math.max(0, Math.min(100, value))}%`,
-        }}
-      />
-    </div>
-  );
-}
-
 export default function App() {
   const [state, setState] = useState(loadState);
   const [syncStatus, setSyncStatus] = useState("");
@@ -554,15 +523,14 @@ export default function App() {
     async function loadRemoteSnapshot() {
       try {
         setSyncStatus("Loading Cloudflare sync...");
-        const response = await fetch(`${apiBase}/api/snapshot`);
-        if (!response.ok) throw new Error("snapshot failed");
+        const response = await fetch(`${apiBase}/api/history-summary`, { headers: getSyncHeaders() });
+        if (!response.ok) throw new Error("history summary failed");
 
         const payload = await response.json();
         if (cancelled) return;
 
         setState((prev) => ({
           ...prev,
-          logs: Array.isArray(payload.logs) ? payload.logs : prev.logs,
           history: Array.isArray(payload.history) ? payload.history : prev.history,
         }));
         setSyncStatus("Cloudflare sync connected");
@@ -821,7 +789,7 @@ export default function App() {
       setSyncStatus("Saving session to Cloudflare...");
       const response = await fetch(`${apiBase}/api/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getSyncHeaders(true),
         body: JSON.stringify(sessionRecord),
       });
       if (!response.ok) throw new Error("session sync failed");
@@ -839,6 +807,7 @@ export default function App() {
       setSyncStatus("Deleting session from Cloudflare...");
       const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
         method: "DELETE",
+        headers: getSyncHeaders(),
       });
       if (!response.ok) throw new Error("delete failed");
       setSyncStatus("Session deleted from Cloudflare");
@@ -857,7 +826,7 @@ export default function App() {
       setSyncStatus("Updating session in Cloudflare...");
       const response = await fetch(`${apiBase}/api/sessions/${sessionId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: getSyncHeaders(true),
         body: JSON.stringify(sessionPatch),
       });
       if (!response.ok) throw new Error("update failed");
@@ -879,7 +848,7 @@ export default function App() {
       setSyncStatus("Saving set to Cloudflare...");
       const response = await fetch(`${apiBase}/api/logs`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getSyncHeaders(true),
         body: JSON.stringify(entry),
       });
       if (!response.ok) throw new Error("sync failed");
@@ -1104,442 +1073,68 @@ export default function App() {
   return (
     <div className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
-        <div className="hero-card border-4 border-black rounded-3xl p-4">
-          <div className="eyebrow">Workout Coach</div>
-          <h1 className="text-3xl font-black tracking-tight">Workout Coach: Your Simple Strength Companion</h1>
-          <p className="hero-copy text-base font-semibold mt-2">Workout Coach guides you through effective dumbbell workouts with a clear, phone-first flow. Follow the program of the day, complete each set, track reps and rest, and log every exercise without losing focus.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <div className="border-4 border-black rounded-2xl px-3 py-2 text-sm font-black flex items-center gap-2"><CalendarDays className="h-4 w-4" /> {todayDateLabel()}</div>
-            <div className="border-4 border-black rounded-2xl px-3 py-2 text-sm font-black flex items-center gap-2"><ListChecks className="h-4 w-4" /> {state.activeProgram}</div>
-            <div className="border-4 border-black rounded-2xl px-3 py-2 text-sm font-black">Day {state.dayType}</div>
-          </div>
-        </div>
+        <HeroHeader todayLabel={todayDateLabel()} activeProgram={state.activeProgram} dayType={state.dayType} />
 
-        <div className="tab-bar-mobile surface rounded-3xl p-3">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = state.activeTab === tab.id;
-
-            return (
-              <Button
-                key={tab.id}
-                className={`tab-button ${isActive ? `tab-button-active ${tab.id}-accent` : "bg-white text-black"}`}
-                onClick={() => updateState({ activeTab: tab.id })}
-              >
-                <span className="tab-icon-wrap"><Icon className="h-5 w-5" /></span>
-                <span>{tab.label}</span>
-              </Button>
-            );
-          })}
-        </div>
+        <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={(tab) => updateState({ activeTab: tab })} />
 
         {state.activeTab === "today" && (
-          <>
-            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
-              <CardHeader className="card-block-header">
-                <CardTitle className="text-2xl font-black">Session Setup</CardTitle>
-              </CardHeader>
-              <CardContent className="card-block-body space-y-3">
-                <div>
-                  <label className="block text-sm font-black mb-1">Program</label>
-                  <select
-                    className="w-full border-4 border-black rounded-2xl p-3 text-lg font-bold"
-                    value={state.activeProgram}
-                    onChange={(e) => updateState({ activeProgram: e.target.value, exerciseIndex: 0, currentSet: 1, currentRep: 0 })}
-                  >
-                    {Object.keys(PROGRAMS).map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-sm font-bold">{currentProgramMeta.description}</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-black mb-1">Next day in sequence</label>
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-                    <div className="text-lg font-black">Day {state.dayType}</div>
-                    <div className="text-sm font-semibold">This advances automatically after you finish the current session.</div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-black mb-1">Available dumbbells today</label>
-                  <Input
-                    className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
-                    placeholder="Example: 1, 2, 3, 4, 5, 6"
-                    value={state.availableWeights}
-                    onChange={(e) => updateState({ availableWeights: e.target.value })}
-                  />
-                  <p className="mt-1 text-xs font-semibold">Enter each dumbbell weight in kg. Exercise suggestions will use this list.</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-black mb-1">Cloudflare sync API URL</label>
-                  <Input
-                    className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
-                    placeholder="https://workout-coach-api.your-name.workers.dev"
-                    value={state.syncApiUrl}
-                    onChange={(e) => updateState({ syncApiUrl: e.target.value })}
-                  />
-                  <p className="mt-1 text-xs font-semibold">Paste your Cloudflare Worker base URL here for production sync. In local dev, leaving this blank uses the proxied `/api` Worker automatically.</p>
-                  {syncUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That still looks like a spreadsheet link. This field should point to your Worker URL.</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-black mb-1">Session note</label>
-                  <Input
-                    className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
-                    placeholder="Optional note for today"
-                    value={state.todayNote}
-                    onChange={(e) => updateState({ todayNote: e.target.value })}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent" : "bg-white text-black"}`}
-                    onClick={() => updateState({ soundEnabled: !state.soundEnabled })}
-                  >
-                    {state.soundEnabled ? <Volume2 className="mr-2 h-5 w-5" /> : <VolumeX className="mr-2 h-5 w-5" />} {state.soundEnabled ? "Voice On" : "Voice Off"}
-                  </Button>
-                  <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={startSession}>
-                    <Play className="mr-2 h-5 w-5" /> Start Session
-                  </Button>
-                </div>
-
-                <div className="sync-indicator-row">
-                  <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
-                  <div className="text-sm font-bold">
-                    {syncConnected ? "Connected to Cloudflare sync" : syncTarget === null ? "Local-only mode" : "Cloudflare sync not connected"}
-                  </div>
-                </div>
-                {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
-              </CardContent>
-            </Card>
-
-            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
-              <CardContent className="p-4 space-y-3">
-                <div className="split-header">
-                  <div>
-                    <div className="eyebrow">Today Ready</div>
-                    <div className="text-2xl font-black">{nextWorkout}</div>
-                  </div>
-                  <div className="status-pill today-accent">{completedTodaySets} sets today</div>
-                </div>
-                <div className="stats-grid compact-grid">
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-                    <div className="text-sm font-black">Weights selected</div>
-                    <div className="text-lg font-black mt-1">{state.availableWeights}</div>
-                    <div className="text-sm font-semibold">Applied to each exercise suggestion.</div>
-                  </div>
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-                    <div className="text-sm font-black">Last session</div>
-                    <div className="text-lg font-black mt-1">{latestSession ? `${latestSession.durationMinutes} min` : "No history yet"}</div>
-                    <div className="text-sm font-semibold">{latestSession ? `${latestSession.program} - Day ${latestSession.dayType}` : "Complete a session to build your log."}</div>
-                  </div>
-                </div>
-                <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={() => updateState({ activeTab: "session" })}>
-                  <ArrowUpRight className="mr-2 h-5 w-5" /> Open session flow
-                </Button>
-              </CardContent>
-            </Card>
-
-            {state.installReady && <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={installApp}><Download className="mr-2 h-5 w-5" /> Install App</Button>}
-          </>
+          <TodayTab
+            state={state}
+            programs={PROGRAMS}
+            currentProgramMeta={currentProgramMeta}
+            nextWorkout={nextWorkout}
+            completedTodaySets={completedTodaySets}
+            latestSession={latestSession}
+            installApp={installApp}
+            startSession={startSession}
+            updateState={updateState}
+            syncConnected={syncConnected}
+            syncTarget={syncTarget}
+            syncStatus={syncStatus}
+            syncUrlLooksLikeSpreadsheet={syncUrlLooksLikeSpreadsheet}
+          />
         )}
 
         {state.activeTab === "session" && (
-          <>
-            <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-              <CardHeader className="card-block-header">
-                <div className="eyebrow">Session</div>
-                <CardTitle className="text-2xl font-black">Program of the Day</CardTitle>
-              </CardHeader>
-              <CardContent className="card-block-body space-y-3">
-                <div className="split-header">
-                  <div>
-                    <div className="eyebrow">Live session</div>
-                    <div className="text-lg font-black">
-                      {state.sessionStage === "warmup" && "Warm Up"}
-                      {state.sessionStage === "exercise" && (currentExercise ? currentExercise.name : "Workout")}
-                      {state.sessionStage === "stretch" && "Finish with stretches"}
-                      {state.sessionStage === "idle" && "Session not started yet"}
-                    </div>
-                  </div>
-                  <div className="status-pill session-accent text-white">{Math.round(sessionProgress)}% done</div>
-                </div>
-                <Progress value={sessionProgress} className="h-4 border-2 border-black" />
-                <div className="space-y-2 compact-list">
-                  <div className={`border-4 rounded-2xl p-3 ${state.sessionStage === "warmup" || state.sessionStage === "idle" ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}>
-                    <div className="text-lg font-black">Warm Up</div>
-                    <div className="text-sm font-bold">Guided video before your first exercise</div>
-                  </div>
-                  {exercises.map((exercise, idx) => (
-                    <div
-                      key={`${exercise.name}-${idx}`}
-                      className={`border-4 rounded-2xl p-3 ${state.sessionStage === "exercise" && idx === state.exerciseIndex ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}
-                    >
-                      <div className="text-lg font-black">{exercise.name}</div>
-                      <div className="text-sm font-bold">{exercise.sets} sets • {exercise.reps} {exercise.isTime ? "sec" : "reps"} • {exercise.weight}</div>
-                    </div>
-                  ))}
-                  <div className={`border-4 rounded-2xl p-3 ${state.sessionStage === "stretch" ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}>
-                    <div className="text-lg font-black">Stretches</div>
-                    <div className="text-sm font-bold">Cooldown video to finish the session</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {state.sessionStage === "idle" && (
-              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardContent className="p-4 space-y-3">
-                  <div className="text-xl font-black">Your session begins with warm up.</div>
-                  <div className="text-sm font-bold">Start the session to move into warm up, then continue through the workout and cooldown stretches.</div>
-                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl session-accent text-white" onClick={startSession}>
-                    <Play className="mr-2 h-5 w-5" /> Start Session Flow
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {state.sessionStage === "warmup" && (
-              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader className="card-block-header">
-                  <div className="eyebrow">Session</div>
-                  <CardTitle className="text-2xl font-black">Warm Up First</CardTitle>
-                </CardHeader>
-                <CardContent className="card-block-body space-y-3">
-                  <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
-                    <iframe
-                      className="w-full h-full"
-                      src="https://www.youtube.com/embed/7PsInjpX_LM"
-                      title="Warm up video"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={beginProgramAfterWarmup}>
-                    <CheckCircle2 className="mr-2 h-5 w-5" /> Warm Up Done, Start Program
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            {currentExercise && (
-              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader className="card-block-header">
-                  <div className="eyebrow">Session</div>
-                  <CardTitle className="text-2xl font-black">Current Exercise</CardTitle>
-                </CardHeader>
-                <CardContent className="card-block-body space-y-4">
-                  <div className="border-4 border-black rounded-3xl p-4 session-accent text-white">
-                    <div className="text-3xl font-black leading-tight">{currentExercise.name}</div>
-                    <div className="mt-2 text-lg font-bold">Set {state.currentSet} / {currentExercise.sets}</div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="border-4 border-black rounded-2xl p-3">
-                      <div className="text-sm font-black">Weight to use</div>
-                      <div className="text-2xl font-black mt-1 flex items-center gap-2"><Dumbbell className="h-6 w-6" /> {resolvedCurrentWeight}</div>
-                    </div>
-                    <div className="border-4 border-black rounded-2xl p-3">
-                      <div className="text-sm font-black">Tempo / Rest</div>
-                      <div className="text-2xl font-black mt-1">{currentExercise.isTime ? currentExercise.tempo : "2-2-3 + 1s"}</div>
-                      <div className="text-lg font-bold">{DEFAULT_REST_SECONDS}s rest</div>
-                    </div>
-                  </div>
-
-                  <div className="border-4 border-black rounded-2xl p-3">
-                    <div className="text-sm font-black mb-2">Coaching cues</div>
-                    <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
-                      <img
-                        className="exercise-reference-image"
-                        src={currentExerciseImage}
-                        alt={`${currentExercise.name} visual reference`}
-                        onError={() => setExerciseImageIndex((prev) => Math.min(prev + 1, currentExerciseImages.length - 1))}
-                      />
-                    </div>
-                    <ul className="space-y-1">
-                      {currentExercise.cues?.map((cue) => (
-                        <li key={cue} className="text-base font-bold flex items-start gap-2"><ChevronRight className="h-4 w-4 mt-1" /> {cue}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="border-4 border-black rounded-3xl p-4 text-center">
-                    <div className="text-sm font-black">{currentExercise.isTime ? "Target time" : "Target reps"}</div>
-                    <div className="text-5xl font-black mt-2">{currentExercise.isTime ? formatSeconds(currentExercise.reps) : currentExercise.reps}</div>
-                  </div>
-
-                  {!currentExercise.isTime ? (
-                    <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
-                      <div className="text-sm font-black">Voice-guided rep count</div>
-                      <div className="text-6xl font-black">{state.currentRep}</div>
-                      <div className="text-sm font-bold">{repGuideLabel} • 2-2-3 tempo with 1s reset {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}>
-                          <RotateCcw className="mr-2 h-5 w-5" /> Restart
-                        </Button>
-                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>
-                          <Play className="mr-2 h-5 w-5" /> {state.repGuideRunning ? "Pause" : "Start"}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
-                      <div className="text-sm font-black">Set timer</div>
-                      <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>
-                          <Clock3 className="mr-2 h-5 w-5" /> {state.setTimerRunning ? "Pause" : "Start"}
-                        </Button>
-                        <Button
-                          className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                          onClick={resetSetTimer}
-                        >
-                          <RotateCcw className="mr-2 h-5 w-5" /> Reset
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}>
-                    <Save className="mr-2 h-5 w-5" /> Complete Set and Save
-                  </Button>
-
-                  <div className="border-4 border-black rounded-3xl p-4 text-center space-y-2">
-                    <div className="text-sm font-black">Rest timer</div>
-                    <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <Button
-                          className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                          onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || DEFAULT_REST_SECONDS })}
-                        >
-                        <TimerReset className="mr-2 h-5 w-5" /> {state.restTimerRunning ? "Pause" : "Start"}
-                      </Button>
-                      <Button
-                        className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                        onClick={skipRest}
-                      >
-                        <ChevronRight className="mr-2 h-5 w-5" /> Skip
-                      </Button>
-                    </div>
-                  </div>
-
-                  {syncStatus && <div className="text-sm font-black">{syncStatus}</div>}
-                </CardContent>
-              </Card>
-            )}
-
-            {state.sessionStage === "stretch" && (
-              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader className="card-block-header">
-                  <div className="eyebrow">Session</div>
-                  <CardTitle className="text-2xl font-black">Finish with Stretches</CardTitle>
-                </CardHeader>
-                <CardContent className="card-block-body space-y-3">
-                  <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
-                    <iframe
-                      className="w-full h-full"
-                      src="https://www.youtube.com/embed/5oj9-4ZQes4?start=187"
-                      title="Cooldown stretch video"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={finishSession}>
-                    <CheckCircle2 className="mr-2 h-5 w-5" /> Stretch Done, Finish Session
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-              <CardContent className="p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
-                    <RotateCcw className="h-5 w-5" /> Reset
-                  </Button>
-                  <Button className="session-footer-button h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ activeTab: "today" })}>
-                    <House className="h-5 w-5" /> Today
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </>
+          <SessionTab
+            state={state}
+            exercises={exercises}
+            currentExercise={currentExercise}
+            sessionProgress={sessionProgress}
+            resolvedCurrentWeight={resolvedCurrentWeight}
+            currentExerciseImage={currentExerciseImage}
+            currentExerciseImages={currentExerciseImages}
+            repGuideLabel={repGuideLabel}
+            syncStatus={syncStatus}
+            formatSeconds={formatSeconds}
+            DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
+            setExerciseImageIndex={setExerciseImageIndex}
+            isAlternateExercise={isAlternateExercise}
+            updateState={updateState}
+            startSession={startSession}
+            beginProgramAfterWarmup={beginProgramAfterWarmup}
+            toggleRepGuide={toggleRepGuide}
+            restartRepGuide={restartRepGuide}
+            toggleSetTimer={toggleSetTimer}
+            resetSetTimer={resetSetTimer}
+            completeSet={completeSet}
+            skipRest={skipRest}
+            resetSession={resetSession}
+            finishSession={finishSession}
+          />
         )}
 
         {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
-            <CardHeader className="card-block-header">
-              <div className="eyebrow">History</div>
-              <CardTitle className="text-2xl font-black">Session Log</CardTitle>
-            </CardHeader>
-            <CardContent className="card-block-body space-y-2">
-              {sessionSummaries.length === 0 ? (
-                <div className="border-4 border-black rounded-2xl p-4 text-lg font-bold">No sets saved yet.</div>
-              ) : (
-                sessionSummaries.map((session) => (
-                  <div key={session.sessionId} className="history-session-group">
-                    <div className="history-session-head">
-                      <div className="history-session-topline">
-                        <div>
-                      <div className="text-lg font-black">{session.date} • {session.program}</div>
-                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets • {Math.round(session.totalCompleted || 0)} reps/sec • {Math.round(session.totalKg || 0)} kg total</div>
-                      <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
-                      {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
-                      {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
-                        </div>
-                        <div className="history-menu-wrap">
-                          <button className="history-menu-trigger" onClick={() => setOpenHistoryMenuId((prev) => prev === session.sessionId ? null : session.sessionId)} aria-label="Open session actions">
-                            <Ellipsis className="h-5 w-5" />
-                          </button>
-                          {openHistoryMenuId === session.sessionId && (
-                            <div className="history-menu">
-                              <button className="history-menu-item" onClick={() => editSession(session)}>Edit session</button>
-                              <button className="history-menu-item history-menu-danger" onClick={() => { setOpenHistoryMenuId(null); deleteSession(session.sessionId); }}>Delete session</button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="history-exercise-list">
-                      {session.exercises.map((exercise) => (
-                        <div key={`${session.sessionId}-${exercise.exercise}`} className="history-exercise-row">
-                          <div className="text-base font-black">{exercise.exercise}</div>
-                          <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"} • {Math.round(exercise.totalKg || 0)} kg</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
-            <CardHeader className="card-block-header">
-              <div className="eyebrow">History</div>
-              <CardTitle className="text-2xl font-black">History and Export</CardTitle>
-            </CardHeader>
-            <CardContent className="card-block-body space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl history-accent text-white" onClick={exportLogs}>
-                  <Download className="mr-2 h-5 w-5" /> Export CSV
-                </Button>
-                <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
-                  <RotateCcw className="mr-2 h-5 w-5" /> Reset Session
-                </Button>
-              </div>
-              <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={clearAllData}>
-                Clear All Local Data
-              </Button>
-              <div className="text-sm font-bold">Export gives you the full raw set log as CSV. The on-screen history stays grouped by session and exercise.</div>
-            </CardContent>
-          </Card>
+          <HistoryTab
+            sessionSummaries={sessionSummaries}
+            openHistoryMenuId={openHistoryMenuId}
+            setOpenHistoryMenuId={setOpenHistoryMenuId}
+            editSession={editSession}
+            deleteSession={deleteSession}
+            exportLogs={exportLogs}
+            resetSession={resetSession}
+            clearAllData={clearAllData}
+          />
         )}
 
       </div>

@@ -37,13 +37,28 @@ database_name = "workout_coach"
 database_id = "YOUR_REAL_DATABASE_ID"
 ```
 
-4. Apply migrations locally first:
+4. Set your allowed frontend origins in `wrangler.toml`:
+
+```toml
+[vars]
+ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173"
+```
+
+5. Create the Worker API token as a Cloudflare secret:
+
+```bash
+npx wrangler secret put API_TOKEN
+```
+
+6. Add the same token to the frontend build as `VITE_SYNC_API_TOKEN` so the app can send `Authorization: Bearer ...` on sync requests.
+
+7. Apply migrations locally first:
 
 ```bash
 npm run d1:migrate:local
 ```
 
-5. Apply migrations to Cloudflare:
+8. Apply migrations to Cloudflare:
 
 ```bash
 npm run d1:migrate:remote
@@ -57,6 +72,12 @@ Run the Worker locally in one terminal:
 npm run cf:dev
 ```
 
+If you want auth enabled in local Worker dev too, create a local secret before starting Wrangler:
+
+```bash
+npx wrangler secret put API_TOKEN --local
+```
+
 Run Vite in another terminal:
 
 ```bash
@@ -64,6 +85,12 @@ npm run dev
 ```
 
 Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
+
+If you use auth locally, also expose the same token to Vite:
+
+```bash
+VITE_SYNC_API_TOKEN=your-local-token npm run dev
+```
 
 ## Production Deploy
 
@@ -78,14 +105,19 @@ Then either:
 - paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or
 - set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
 
+The frontend can also read the bearer token from `VITE_SYNC_API_TOKEN` during production builds.
+
 ## API Routes
 
 - `GET /api/health`
-- `GET /api/snapshot`
+- `GET /api/snapshot` (auth required)
+- `GET /api/history-summary` (auth required)
 - `POST /api/logs`
 - `POST /api/sessions`
 - `PATCH /api/sessions/:sessionId`
 - `DELETE /api/sessions/:sessionId`
+
+`/api/history-summary` returns grouped history rows ready for the app UI, so the client no longer needs to download the full raw log history just to render session cards.
 
 ## Stored Session Metadata
 
