@@ -7,8 +7,6 @@ import {
   RotateCcw,
   CheckCircle2,
   TimerReset,
-  Plus,
-  Minus,
   Save,
   Dumbbell,
   Download,
@@ -159,7 +157,20 @@ const DEFAULT_STATE = {
   history: [],
   todayNote: "",
   activeTab: "today",
+  availableWeights: "1, 2, 3, 4, 5, 6",
+  sessionStage: "idle",
+  stretchDone: false,
+  repGuideRunning: false,
+  repGuidePhaseIndex: 0,
+  repGuidePhaseRemaining: 0,
+  repGuideSide: "left",
 };
+
+const REP_PHASES = [
+  { label: "Lower", seconds: 3 },
+  { label: "Hold", seconds: 1 },
+  { label: "Lift", seconds: 2 },
+];
 
 function loadState() {
   try {
@@ -186,6 +197,73 @@ function getNextDayType(current) {
   if (current === "A") return "B";
   if (current === "B") return "C";
   return "A";
+}
+
+function isAlternateExercise(name = "") {
+  return /(split squat|reverse lunge|step-up|side bend|bicycle crunch)/i.test(name);
+}
+
+function parseAvailableWeights(input = "") {
+  return input
+    .split(",")
+    .map((value) => Number.parseFloat(value.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+}
+
+function chooseClosest(values, target) {
+  return values.reduce((best, current) => (
+    Math.abs(current - target) < Math.abs(best - target) ? current : best
+  ), values[0]);
+}
+
+function resolveWeightGuide(guide, availableWeightsInput) {
+  const availableWeights = parseAvailableWeights(availableWeightsInput);
+  const hasBodyweight = /bodyweight/i.test(guide);
+
+  if (!availableWeights.length) return guide;
+
+  const totalRangeMatch = guide.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*kg total/i);
+  if (totalRangeMatch) {
+    const min = Number.parseFloat(totalRangeMatch[1]);
+    const max = Number.parseFloat(totalRangeMatch[2]);
+    const pairOptions = availableWeights.map((weight) => ({ single: weight, total: weight * 2 }));
+    const inRange = pairOptions.filter((option) => option.total >= min && option.total <= max);
+    const pick = inRange.at(-1) || pairOptions.reduce((best, option) => (
+      Math.abs(option.total - (min + max) / 2) < Math.abs(best.total - (min + max) / 2) ? option : best
+    ), pairOptions[0]);
+
+    const resolved = `${pick.single} kg each hand (${pick.total} kg total)`;
+    return hasBodyweight ? `Bodyweight or ${resolved}` : resolved;
+  }
+
+  const eachHandMatch = guide.match(/(\d+(?:\.\d+)?)\s*kg each hand/i);
+  if (eachHandMatch) {
+    const target = Number.parseFloat(eachHandMatch[1]);
+    const pick = chooseClosest(availableWeights, target);
+    return `${pick} kg each hand`;
+  }
+
+  const oneHandMatch = guide.match(/(\d+(?:\.\d+)?)\s*kg in one hand/i);
+  if (oneHandMatch) {
+    const target = Number.parseFloat(oneHandMatch[1]);
+    const pick = chooseClosest(availableWeights, target);
+    return `${pick} kg in one hand`;
+  }
+
+  if (hasBodyweight) return "Bodyweight";
+
+  return guide;
+}
+
+function getExerciseReferenceUrl(name = "") {
+  return `https://www.google.com/search?q=${encodeURIComponent(`site:athlemove.com/exercises ${name}`)}`;
+}
+
+function confirmAction(message, callback) {
+  if (typeof window === "undefined" || window.confirm(message)) {
+    callback();
+  }
 }
 
 function speak(text, enabled) {
@@ -277,6 +355,7 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
+  const repGuideRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -322,12 +401,87 @@ export default function App() {
     return () => clearInterval(restTimerRef.current);
   }, [state.restTimerRunning, state.restRemaining, state.soundEnabled]);
 
+  useEffect(() => {
+    if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
+
+    const activeExercise = PROGRAMS[state.activeProgram][state.dayType]?.[state.exerciseIndex];
+    if (!activeExercise || activeExercise.isTime) return;
+
+    repGuideRef.current = setTimeout(() => {
+      setState((prev) => {
+        const exercise = PROGRAMS[prev.activeProgram][prev.dayType]?.[prev.exerciseIndex];
+        if (!exercise || exercise.isTime || !prev.repGuideRunning) return prev;
+
+        if (prev.repGuidePhaseRemaining > 1) {
+          return { ...prev, repGuidePhaseRemaining: prev.repGuidePhaseRemaining - 1 };
+        }
+
+        if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
+          const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
+          speak(REP_PHASES[nextPhaseIndex].label, prev.soundEnabled);
+          return {
+            ...prev,
+            repGuidePhaseIndex: nextPhaseIndex,
+            repGuidePhaseRemaining: REP_PHASES[nextPhaseIndex].seconds,
+          };
+        }
+
+        if (isAlternateExercise(exercise.name)) {
+          if (prev.repGuideSide === "left") {
+            speak("Right", prev.soundEnabled);
+            return {
+              ...prev,
+              repGuideSide: "right",
+              repGuidePhaseIndex: 0,
+              repGuidePhaseRemaining: REP_PHASES[0].seconds,
+            };
+          }
+
+          const nextRep = prev.currentRep + 1;
+          const done = nextRep >= exercise.reps;
+          speak(String(nextRep), prev.soundEnabled);
+
+          return {
+            ...prev,
+            currentRep: nextRep,
+            repGuideRunning: !done,
+            repGuideSide: "left",
+            repGuidePhaseIndex: 0,
+            repGuidePhaseRemaining: done ? 0 : REP_PHASES[0].seconds,
+          };
+        }
+
+        const nextRep = prev.currentRep + 1;
+        const done = nextRep >= exercise.reps;
+        speak(String(nextRep), prev.soundEnabled);
+
+        return {
+          ...prev,
+          currentRep: nextRep,
+          repGuideRunning: !done,
+          repGuidePhaseIndex: 0,
+          repGuidePhaseRemaining: done ? 0 : REP_PHASES[0].seconds,
+        };
+      });
+    }, 1000);
+
+    return () => clearTimeout(repGuideRef.current);
+  }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex]);
+
   const exercises = useMemo(() => PROGRAMS[state.activeProgram][state.dayType] || [], [state.activeProgram, state.dayType]);
   const currentProgramMeta = useMemo(() => PROGRAMS[state.activeProgram], [state.activeProgram]);
-  const currentExercise = exercises[state.exerciseIndex] || null;
-  const sessionProgress = exercises.length
-    ? ((state.exerciseIndex + (state.currentSet - 1) / (currentExercise?.sets || 1)) / exercises.length) * 100
-    : 0;
+  const currentExercise = state.sessionStage === "exercise" ? exercises[state.exerciseIndex] || null : null;
+  const sessionProgress = useMemo(() => {
+    const totalSteps = exercises.length + 2;
+    if (!totalSteps) return 0;
+    if (state.sessionStage === "warmup") return 0;
+    if (state.sessionStage === "exercise") {
+      return ((1 + state.exerciseIndex + (state.currentSet - 1) / (currentExercise?.sets || 1)) / totalSteps) * 100;
+    }
+    if (state.sessionStage === "stretch") return ((exercises.length + 1) / totalSteps) * 100;
+    if (state.sessionStage === "idle") return 0;
+    return 100;
+  }, [exercises.length, state.sessionStage, state.exerciseIndex, state.currentSet, currentExercise?.sets]);
   const completedTodaySets = useMemo(
     () => state.logs.filter((log) => log.date === todayDateLabel()).length,
     [state.logs],
@@ -335,8 +489,16 @@ export default function App() {
   const nextWorkout = `${state.activeProgram} - Day ${state.dayType}`;
   const latestSession = state.history[0] || null;
   const activeThemeClass = `${state.activeTab}-theme`;
+  const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
+  const currentExerciseReference = currentExercise ? getExerciseReferenceUrl(currentExercise.name) : "";
+  const repGuideLabel = currentExercise?.isTime
+    ? ""
+    : isAlternateExercise(currentExercise?.name || "")
+      ? `${state.repGuideSide === "left" ? "Left" : "Right"} side`
+      : REP_PHASES[state.repGuidePhaseIndex]?.label || "Lower";
+  const sheetUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.sheetWebhookUrl);
   const tabs = [
-    { id: "today", label: "Today", icon: House },
+    { id: "today", label: "Setup", icon: House },
     { id: "session", label: "Session", icon: Activity },
     { id: "history", label: "History", icon: History },
   ];
@@ -349,18 +511,78 @@ export default function App() {
       sessionStartedAt: new Date().toISOString(),
       sessionId,
       activeTab: "session",
+      sessionStage: "warmup",
       exerciseIndex: 0,
       currentSet: 1,
       currentRep: 0,
-      setDurationRemaining: PROGRAMS[state.activeProgram][state.dayType]?.[0]?.isTime
-        ? PROGRAMS[state.activeProgram][state.dayType][0].reps
-        : 0,
+      repGuideRunning: false,
+      repGuidePhaseIndex: 0,
+      repGuidePhaseRemaining: 0,
+      repGuideSide: "left",
+      setDurationRemaining: 0,
+      setTimerRunning: false,
+      restRemaining: 0,
+      restTimerRunning: false,
+      warmupDone: false,
+      stretchDone: false,
+    });
+    runHaptic("medium");
+    speak(`Warm up first. ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled);
+  };
+
+  const beginProgramAfterWarmup = () => {
+    const firstExercise = PROGRAMS[state.activeProgram][state.dayType]?.[0];
+    updateState({
+      warmupDone: true,
+      sessionStage: "exercise",
+      exerciseIndex: 0,
+      currentSet: 1,
+      currentRep: 0,
+      repGuideRunning: false,
+      repGuidePhaseIndex: 0,
+      repGuidePhaseRemaining: 0,
+      repGuideSide: "left",
+      setDurationRemaining: firstExercise?.isTime ? firstExercise.reps : 0,
       setTimerRunning: false,
       restRemaining: 0,
       restTimerRunning: false,
     });
-    runHaptic("medium");
-    speak(`Session started. ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled);
+    speak(`First exercise. ${firstExercise?.name || "Begin"}.`, state.soundEnabled);
+  };
+
+  const finishSession = () => {
+    const sessionRecord = {
+      sessionId: state.sessionId,
+      date: todayDateLabel(),
+      program: state.activeProgram,
+      dayType: state.dayType,
+      durationMinutes: currentSessionDurationMinutes(),
+      setsCompleted: state.logs.filter((x) => x.sessionId === state.sessionId).length,
+    };
+
+    updateState({
+      history: [sessionRecord, ...state.history].slice(0, 50),
+      activeTab: "history",
+      sessionStage: "idle",
+      restRemaining: 0,
+      restTimerRunning: false,
+      setDurationRemaining: 0,
+      setTimerRunning: false,
+      repGuideRunning: false,
+      repGuidePhaseIndex: 0,
+      repGuidePhaseRemaining: 0,
+      repGuideSide: "left",
+      currentRep: 0,
+      currentSet: 1,
+      exerciseIndex: 0,
+      stretchDone: true,
+      sessionStartedAt: null,
+      sessionId: null,
+      warmupDone: false,
+      dayType: getNextDayType(state.dayType),
+    });
+    runHaptic("success");
+    speak("Session complete. Good work.", state.soundEnabled);
   };
 
   const installApp = async () => {
@@ -402,6 +624,10 @@ export default function App() {
       updateState({
         currentSet: state.currentSet + 1,
         currentRep: 0,
+        repGuideRunning: false,
+        repGuidePhaseIndex: 0,
+        repGuidePhaseRemaining: 0,
+        repGuideSide: "left",
         setDurationRemaining: currentExercise.isTime ? currentExercise.reps : 0,
         setTimerRunning: false,
         restRemaining: restSeconds,
@@ -416,6 +642,10 @@ export default function App() {
         exerciseIndex: state.exerciseIndex + 1,
         currentSet: 1,
         currentRep: 0,
+        repGuideRunning: false,
+        repGuidePhaseIndex: 0,
+        repGuidePhaseRemaining: 0,
+        repGuideSide: "left",
         setDurationRemaining: nextExercise?.isTime ? nextExercise.reps : 0,
         setTimerRunning: false,
         restRemaining: restSeconds,
@@ -425,25 +655,18 @@ export default function App() {
       return;
     }
 
-    const sessionRecord = {
-      sessionId: state.sessionId,
-      date: todayDateLabel(),
-      program: state.activeProgram,
-      dayType: state.dayType,
-      durationMinutes: currentSessionDurationMinutes(),
-      setsCompleted: state.logs.filter((x) => x.sessionId === state.sessionId).length + 1,
-    };
     updateState({
-      history: [sessionRecord, ...state.history].slice(0, 50),
-      activeTab: "history",
+      sessionStage: "stretch",
       restRemaining: 0,
       restTimerRunning: false,
       setDurationRemaining: 0,
       setTimerRunning: false,
-      dayType: getNextDayType(state.dayType),
+      repGuideRunning: false,
+      repGuidePhaseIndex: 0,
+      repGuidePhaseRemaining: 0,
+      repGuideSide: "left",
     });
-    runHaptic("success");
-    speak("Session complete. Good work.", state.soundEnabled);
+    speak("Workout complete. Finish with stretches.", state.soundEnabled);
   };
 
   const completeSet = async () => {
@@ -460,7 +683,7 @@ export default function App() {
       target: currentExercise.reps,
       completed: completedValue,
       isTime: !!currentExercise.isTime,
-      weightGuide: currentExercise.weight,
+      weightGuide: resolveWeightGuide(currentExercise.weight, state.availableWeights),
       tempo: currentExercise.tempo,
       rest: currentExercise.rest,
       sessionId: state.sessionId,
@@ -472,30 +695,27 @@ export default function App() {
   };
 
   const resetSession = () => {
-    runHaptic("light");
-    updateState({
-      exerciseIndex: 0,
-      currentSet: 1,
-      currentRep: 0,
-      setDurationRemaining: currentExercise?.isTime ? currentExercise.reps : 0,
-      setTimerRunning: false,
-      restRemaining: 0,
-      restTimerRunning: false,
-      warmupDone: false,
-      sessionStartedAt: null,
-      sessionId: null,
+    confirmAction("Reset the full session and clear current progress?", () => {
+      runHaptic("light");
+      updateState({
+        exerciseIndex: 0,
+        currentSet: 1,
+        currentRep: 0,
+        setDurationRemaining: 0,
+        setTimerRunning: false,
+        restRemaining: 0,
+        restTimerRunning: false,
+        warmupDone: false,
+        stretchDone: false,
+        sessionStage: "idle",
+        sessionStartedAt: null,
+        sessionId: null,
+        repGuideRunning: false,
+        repGuidePhaseIndex: 0,
+        repGuidePhaseRemaining: 0,
+        repGuideSide: "left",
+      });
     });
-  };
-
-  const nextRep = () => {
-    runHaptic("light");
-    updateState({ currentRep: state.currentRep + 1 });
-    if ((state.currentRep + 1) % 5 === 0) speak(String(state.currentRep + 1), state.soundEnabled);
-  };
-
-  const prevRep = () => {
-    runHaptic("light");
-    updateState({ currentRep: Math.max(0, state.currentRep - 1) });
   };
 
   const exportLogs = () => {
@@ -504,9 +724,43 @@ export default function App() {
   };
 
   const clearAllData = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setState(DEFAULT_STATE);
-    setSheetStatus("");
+    confirmAction("Clear all local workout data from this device?", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      setState(DEFAULT_STATE);
+      setSheetStatus("");
+    });
+  };
+
+  const toggleRepGuide = () => {
+    if (!currentExercise || currentExercise.isTime) return;
+
+    if (state.repGuideRunning) {
+      updateState({ repGuideRunning: false });
+      return;
+    }
+
+    const shouldRestart = state.currentRep >= currentExercise.reps;
+    const nextSide = state.currentRep === 0 || shouldRestart ? "left" : state.repGuideSide;
+    updateState({
+      currentRep: shouldRestart ? 0 : state.currentRep,
+      repGuideRunning: true,
+      repGuidePhaseIndex: 0,
+      repGuidePhaseRemaining: REP_PHASES[0].seconds,
+      repGuideSide: nextSide,
+    });
+    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. ${REP_PHASES[0].label}` : REP_PHASES[0].label, state.soundEnabled);
+  };
+
+  const restartRepGuide = () => {
+    confirmAction("Restart the guided rep count for this set?", () => {
+      updateState({
+        currentRep: 0,
+        repGuideRunning: false,
+        repGuidePhaseIndex: 0,
+        repGuidePhaseRemaining: 0,
+        repGuideSide: "left",
+      });
+    });
   };
 
   const toggleSetTimer = () => {
@@ -516,6 +770,16 @@ export default function App() {
       return;
     }
     updateState({ setTimerRunning: !state.setTimerRunning });
+  };
+
+  const resetSetTimer = () => {
+    confirmAction("Reset this timer back to the full target time?", () => {
+      updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false });
+    });
+  };
+
+  const skipRest = () => {
+    updateState({ restRemaining: 0, restTimerRunning: false });
   };
 
   return (
@@ -553,51 +817,6 @@ export default function App() {
         {state.activeTab === "today" && (
           <>
             <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
-              <CardContent className="p-4 space-y-3">
-                <div className="split-header">
-                  <div>
-                    <div className="eyebrow">Today</div>
-                    <div className="text-2xl font-black">Ready for {nextWorkout}</div>
-                  </div>
-                  <div className="status-pill today-accent text-white">{completedTodaySets} sets logged</div>
-                </div>
-                <div className="stats-grid compact-grid">
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-                    <div className="text-sm font-black">Current focus</div>
-                    <div className="text-lg font-black mt-1">{state.activeProgram}</div>
-                    <div className="text-sm font-semibold">{currentProgramMeta.description}</div>
-                  </div>
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-                    <div className="text-sm font-black">Last session</div>
-                    <div className="text-lg font-black mt-1">{latestSession ? `${latestSession.durationMinutes} min` : "No history yet"}</div>
-                    <div className="text-sm font-semibold">{latestSession ? `${latestSession.program} - Day ${latestSession.dayType}` : "Complete a workout to see trends."}</div>
-                  </div>
-                </div>
-                <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent text-white" onClick={startSession}>
-                  <Play className="mr-2 h-5 w-5" /> Start today&apos;s session
-                </Button>
-              </CardContent>
-            </Card>
-
-            {state.installReady && (
-              <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
-                <CardContent className="p-4 space-y-3">
-                  <div className="split-header">
-                    <div>
-                      <div className="eyebrow">Install</div>
-                      <div className="text-xl font-black">Add to Android home screen</div>
-                    </div>
-                    <div className="status-pill">PWA ready</div>
-                  </div>
-                  <div className="text-sm font-bold">Use the install button below. This works when the app is deployed as a PWA.</div>
-                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl today-accent text-white" onClick={installApp}>
-                    <Download className="mr-2 h-5 w-5" /> Install App
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
               <CardHeader className="card-block-header">
                 <CardTitle className="text-2xl font-black">Session Setup</CardTitle>
               </CardHeader>
@@ -617,29 +836,34 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-black mb-1">Day</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {["A", "B", "C"].map((day) => (
-                      <Button
-                        key={day}
-                        className={`h-14 text-2xl font-black border-4 border-black rounded-2xl ${state.dayType === day ? "today-accent text-white" : "bg-white text-black"}`}
-                        onClick={() => updateState({ dayType: day, exerciseIndex: 0, currentSet: 1, currentRep: 0 })}
-                      >
-                        {day}
-                      </Button>
-                    ))}
+                  <label className="block text-sm font-black mb-1">Next day in sequence</label>
+                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
+                    <div className="text-lg font-black">Day {state.dayType}</div>
+                    <div className="text-sm font-semibold">This advances automatically after you finish the current session.</div>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-black mb-1">Optional Google Sheets webhook URL</label>
+                  <label className="block text-sm font-black mb-1">Available dumbbells today</label>
                   <Input
                     className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
-                    placeholder="Paste your Apps Script web app URL"
+                    placeholder="Example: 1, 2, 3, 4, 5, 6"
+                    value={state.availableWeights}
+                    onChange={(e) => updateState({ availableWeights: e.target.value })}
+                  />
+                  <p className="mt-1 text-xs font-semibold">Enter each dumbbell weight in kg. Exercise suggestions will use this list.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-black mb-1">Google Sheets Apps Script webhook URL</label>
+                  <Input
+                    className="border-4 border-black rounded-2xl p-3 text-sm font-semibold"
+                    placeholder="Paste your deployed Apps Script web app URL"
                     value={state.sheetWebhookUrl}
                     onChange={(e) => updateState({ sheetWebhookUrl: e.target.value })}
                   />
-                  <p className="mt-1 text-xs font-semibold">If you leave this blank, the app still works and saves locally on the phone.</p>
+                  <p className="mt-1 text-xs font-semibold">A share link to the spreadsheet will not work here. This field needs a POST webhook URL from Google Apps Script.</p>
+                  {sheetUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That looks like a spreadsheet sharing link, not a webhook endpoint.</p>}
                 </div>
 
                 <div>
@@ -654,40 +878,46 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button
-                    className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent text-white" : "bg-white text-black"}`}
+                    className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent" : "bg-white text-black"}`}
                     onClick={() => updateState({ soundEnabled: !state.soundEnabled })}
                   >
                     {state.soundEnabled ? <Volume2 className="mr-2 h-5 w-5" /> : <VolumeX className="mr-2 h-5 w-5" />} {state.soundEnabled ? "Voice On" : "Voice Off"}
                   </Button>
-                  <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={() => updateState({ activeTab: "session" })}>
-                    <ArrowUpRight className="mr-2 h-5 w-5" /> Open Session
+                  <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={startSession}>
+                    <Play className="mr-2 h-5 w-5" /> Start Session
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
-              <CardHeader className="card-block-header">
-                <CardTitle className="text-2xl font-black">Warm Up</CardTitle>
-              </CardHeader>
-              <CardContent className="card-block-body space-y-3">
-                <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
-                  <iframe
-                    className="w-full h-full"
-                    src="https://www.youtube.com/embed/7PsInjpX_LM"
-                    title="Warm up video"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
+              <CardContent className="p-4 space-y-3">
+                <div className="split-header">
+                  <div>
+                    <div className="eyebrow">Today Ready</div>
+                    <div className="text-2xl font-black">{nextWorkout}</div>
+                  </div>
+                  <div className="status-pill today-accent">{completedTodaySets} sets today</div>
                 </div>
-                <Button
-                  className={`w-full h-14 text-xl font-black border-4 border-black rounded-2xl ${state.warmupDone ? "today-accent text-white" : "bg-white text-black"}`}
-                  onClick={() => updateState({ warmupDone: !state.warmupDone })}
-                >
-                  <CheckCircle2 className="mr-2 h-5 w-5" /> {state.warmupDone ? "Warm Up Done" : "Mark Warm Up Done"}
+                <div className="stats-grid compact-grid">
+                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
+                    <div className="text-sm font-black">Weights selected</div>
+                    <div className="text-lg font-black mt-1">{state.availableWeights}</div>
+                    <div className="text-sm font-semibold">Applied to each exercise suggestion.</div>
+                  </div>
+                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
+                    <div className="text-sm font-black">Last session</div>
+                    <div className="text-lg font-black mt-1">{latestSession ? `${latestSession.durationMinutes} min` : "No history yet"}</div>
+                    <div className="text-sm font-semibold">{latestSession ? `${latestSession.program} - Day ${latestSession.dayType}` : "Complete a session to build your log."}</div>
+                  </div>
+                </div>
+                <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={() => updateState({ activeTab: "session" })}>
+                  <ArrowUpRight className="mr-2 h-5 w-5" /> Open session flow
                 </Button>
               </CardContent>
             </Card>
+
+            {state.installReady && <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={installApp}><Download className="mr-2 h-5 w-5" /> Install App</Button>}
           </>
         )}
 
@@ -701,24 +931,71 @@ export default function App() {
                 <div className="split-header">
                   <div>
                     <div className="eyebrow">Live session</div>
-                    <div className="text-lg font-black">{currentExercise ? currentExercise.name : "Choose a workout to begin"}</div>
+                    <div className="text-lg font-black">
+                      {state.sessionStage === "warmup" && "Warm Up"}
+                      {state.sessionStage === "exercise" && (currentExercise ? currentExercise.name : "Workout")}
+                      {state.sessionStage === "stretch" && "Finish with stretches"}
+                      {state.sessionStage === "idle" && "Session not started yet"}
+                    </div>
                   </div>
                   <div className="status-pill session-accent text-white">{Math.round(sessionProgress)}% done</div>
                 </div>
                 <Progress value={sessionProgress} className="h-4 border-2 border-black" />
                 <div className="space-y-2 compact-list">
+                  <div className={`border-4 rounded-2xl p-3 ${state.sessionStage === "warmup" || state.sessionStage === "idle" ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}>
+                    <div className="text-lg font-black">Warm Up</div>
+                    <div className="text-sm font-bold">Guided video before your first exercise</div>
+                  </div>
                   {exercises.map((exercise, idx) => (
                     <div
                       key={`${exercise.name}-${idx}`}
-                      className={`border-4 rounded-2xl p-3 ${idx === state.exerciseIndex ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}
+                      className={`border-4 rounded-2xl p-3 ${state.sessionStage === "exercise" && idx === state.exerciseIndex ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}
                     >
                       <div className="text-lg font-black">{exercise.name}</div>
                       <div className="text-sm font-bold">{exercise.sets} sets • {exercise.reps} {exercise.isTime ? "sec" : "reps"} • {exercise.weight}</div>
                     </div>
                   ))}
+                  <div className={`border-4 rounded-2xl p-3 ${state.sessionStage === "stretch" ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}>
+                    <div className="text-lg font-black">Stretches</div>
+                    <div className="text-sm font-bold">Cooldown video to finish the session</div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
+
+            {state.sessionStage === "idle" && (
+              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
+                <CardContent className="p-4 space-y-3">
+                  <div className="text-xl font-black">Your session begins with warm up.</div>
+                  <div className="text-sm font-bold">Start the session to move into warm up, then continue through the workout and cooldown stretches.</div>
+                  <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl session-accent text-white" onClick={startSession}>
+                    <Play className="mr-2 h-5 w-5" /> Start Session Flow
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {state.sessionStage === "warmup" && (
+              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
+                <CardHeader>
+                  <CardTitle className="text-2xl font-black">Warm Up First</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
+                    <iframe
+                      className="w-full h-full"
+                      src="https://www.youtube.com/embed/7PsInjpX_LM"
+                      title="Warm up video"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={beginProgramAfterWarmup}>
+                    <CheckCircle2 className="mr-2 h-5 w-5" /> Warm Up Done, Start Program
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             {currentExercise && (
               <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
@@ -734,7 +1011,7 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="border-4 border-black rounded-2xl p-3">
                       <div className="text-sm font-black">Weight to use</div>
-                      <div className="text-2xl font-black mt-1 flex items-center gap-2"><Dumbbell className="h-6 w-6" /> {currentExercise.weight}</div>
+                      <div className="text-2xl font-black mt-1 flex items-center gap-2"><Dumbbell className="h-6 w-6" /> {resolvedCurrentWeight}</div>
                     </div>
                     <div className="border-4 border-black rounded-2xl p-3">
                       <div className="text-sm font-black">Tempo / Rest</div>
@@ -750,6 +1027,7 @@ export default function App() {
                         <li key={cue} className="text-base font-bold flex items-start gap-2"><ChevronRight className="h-4 w-4 mt-1" /> {cue}</li>
                       ))}
                     </ul>
+                    <a className="reference-link" href={currentExerciseReference} target="_blank" rel="noreferrer">Open visual reference</a>
                   </div>
 
                   <div className="border-4 border-black rounded-3xl p-4 text-center">
@@ -759,14 +1037,15 @@ export default function App() {
 
                   {!currentExercise.isTime ? (
                     <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
-                      <div className="text-sm font-black">Rep counter</div>
+                      <div className="text-sm font-black">Voice-guided rep count</div>
                       <div className="text-6xl font-black">{state.currentRep}</div>
+                      <div className="text-sm font-bold">{repGuideLabel} • 3-1-2 tempo {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
                       <div className="grid grid-cols-2 gap-3">
-                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={prevRep}>
-                          <Minus className="mr-2 h-5 w-5" /> Rep
+                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}>
+                          <RotateCcw className="mr-2 h-5 w-5" /> Restart
                         </Button>
-                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={nextRep}>
-                          <Plus className="mr-2 h-5 w-5" /> Rep
+                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>
+                          <Play className="mr-2 h-5 w-5" /> {state.repGuideRunning ? "Pause" : "Start"}
                         </Button>
                       </div>
                     </div>
@@ -780,7 +1059,7 @@ export default function App() {
                         </Button>
                         <Button
                           className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                          onClick={() => updateState({ setDurationRemaining: currentExercise.reps, setTimerRunning: false })}
+                          onClick={resetSetTimer}
                         >
                           <RotateCcw className="mr-2 h-5 w-5" /> Reset
                         </Button>
@@ -804,14 +1083,36 @@ export default function App() {
                       </Button>
                       <Button
                         className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                        onClick={() => updateState({ restRemaining: currentExercise.rest, restTimerRunning: false })}
+                        onClick={skipRest}
                       >
-                        <RotateCcw className="mr-2 h-5 w-5" /> Reset
+                        <ChevronRight className="mr-2 h-5 w-5" /> Skip
                       </Button>
                     </div>
                   </div>
 
                   {sheetStatus && <div className="text-sm font-black">{sheetStatus}</div>}
+                </CardContent>
+              </Card>
+            )}
+
+            {state.sessionStage === "stretch" && (
+              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
+                <CardHeader>
+                  <CardTitle className="text-2xl font-black">Finish with Stretches</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
+                    <iframe
+                      className="w-full h-full"
+                      src="https://www.youtube.com/embed/5oj9-4ZQes4?start=187"
+                      title="Cooldown stretch video"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={finishSession}>
+                    <CheckCircle2 className="mr-2 h-5 w-5" /> Stretch Done, Finish Session
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -884,19 +1185,6 @@ export default function App() {
           </Card>
         )}
 
-        {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
-            <CardHeader>
-              <CardTitle className="text-2xl font-black">Android Deployment</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm font-bold">
-              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Frontend: React app deployed on Cloudflare Pages free plan.</div>
-              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">PWA: manifest + service worker for installable Android support and offline shell.</div>
-              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Capacitor: Android wrapper can package the same UI as a native app shell.</div>
-              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Data sync: Google Apps Script or local storage with CSV export.</div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   );
