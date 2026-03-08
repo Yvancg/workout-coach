@@ -30,6 +30,10 @@ export async function loadHistorySummary(syncApiUrl) {
   return fetchSyncJson("/api/history-summary", syncApiUrl);
 }
 
+export async function loadWhoAmI(syncApiUrl) {
+  return fetchSyncJson("/api/whoami", syncApiUrl);
+}
+
 export async function createRemoteSession(syncApiUrl, sessionRecord) {
   return fetchSyncJson("/api/sessions", syncApiUrl, {
     method: "POST",

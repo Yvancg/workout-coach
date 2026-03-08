@@ -3,6 +3,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
   state,
+  syncIdentityEmail,
   installReady,
   programs,
   currentProgramMeta,
@@ -77,6 +78,7 @@ export function TodayTab({
             <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
             <div className="text-sm font-bold">{syncConnected ? "Connected to Cloudflare sync" : syncTarget === null ? "Local-only mode" : "Cloudflare login required or not connected"}</div>
           </div>
+          {syncIdentityEmail && <div className="text-xs font-semibold">Signed in as {syncIdentityEmail}</div>}
           {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
         </CardContent>
       </Card>

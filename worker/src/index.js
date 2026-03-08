@@ -141,6 +141,13 @@ function mapSessionRow(row) {
   };
 }
 
+function buildWhoAmI(identity) {
+  return {
+    authenticated: true,
+    email: identity.ownerEmail,
+  };
+}
+
 async function handleSnapshot(env, identity) {
   const db = ensureDb(env);
   const logsResult = await db.prepare(`
@@ -347,6 +354,10 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/api/snapshot") {
         return json(await handleSnapshot(env, identity), request, env);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/whoami") {
+        return json(buildWhoAmI(identity), request, env);
       }
 
       if (request.method === "GET" && url.pathname === "/api/history-summary") {

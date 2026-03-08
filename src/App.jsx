@@ -9,7 +9,7 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
-import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
+import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, loadWhoAmI, updateRemoteSession } from "./lib/syncClient";
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
@@ -85,6 +85,7 @@ async function runHaptic(type = "light") {
 export default function App() {
   const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
   const [syncStatus, setSyncStatus] = useState("");
+  const [syncIdentityEmail, setSyncIdentityEmail] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const { installApp, installReady } = useInstallPrompt();
@@ -101,21 +102,27 @@ export default function App() {
     async function loadRemoteSnapshot() {
       try {
         setSyncStatus("Loading Cloudflare sync...");
-        const result = await loadHistorySummary(state.syncApiUrl);
-        if (result.skipped) return;
+        const [historyResult, whoAmIResult] = await Promise.all([
+          loadHistorySummary(state.syncApiUrl),
+          loadWhoAmI(state.syncApiUrl),
+        ]);
+        if (historyResult.skipped || whoAmIResult.skipped) return;
         if (cancelled) return;
 
         setState((prev) => ({
           ...prev,
-          history: Array.isArray(result.data?.history) ? result.data.history : prev.history,
+          history: Array.isArray(historyResult.data?.history) ? historyResult.data.history : prev.history,
         }));
+        setSyncIdentityEmail(whoAmIResult.data?.email || "");
         setSyncStatus("Cloudflare sync connected");
       } catch (error) {
         if (cancelled) return;
         if (error?.status === 401 || error?.status === 403) {
+          setSyncIdentityEmail("");
           setSyncStatus("Cloudflare Access login required.");
           return;
         }
+        setSyncIdentityEmail("");
         setSyncStatus("Cloudflare sync unavailable. Local save only.");
       }
     }
@@ -633,6 +640,7 @@ export default function App() {
         {state.activeTab === "today" && (
           <TodayTab
             state={state}
+            syncIdentityEmail={syncIdentityEmail}
             installReady={installReady}
             programs={PROGRAMS}
             currentProgramMeta={currentProgramMeta}
