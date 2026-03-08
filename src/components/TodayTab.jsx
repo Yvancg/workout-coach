@@ -13,6 +13,7 @@ export function TodayTab({
   startSession,
   updateState,
   syncConnected,
+  syncNeedsToken,
   syncTarget,
   syncStatus,
   syncUrlLooksLikeSpreadsheet,
@@ -60,6 +61,12 @@ export function TodayTab({
           </div>
 
           <div>
+            <label className="block text-sm font-black mb-1">Private Cloudflare API token</label>
+            <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="password" autoComplete="off" placeholder="Paste only on your own device" value={state.syncApiToken} onChange={(e) => updateState({ syncApiToken: e.target.value })} />
+            <p className="mt-1 text-xs font-semibold">Keep this token out of public builds. It is stored only on this device so your Worker stays private.</p>
+          </div>
+
+          <div>
             <label className="block text-sm font-black mb-1">Session note</label>
             <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" placeholder="Optional note for today" value={state.todayNote} onChange={(e) => updateState({ todayNote: e.target.value })} />
           </div>
@@ -75,7 +82,7 @@ export function TodayTab({
 
           <div className="sync-indicator-row">
             <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
-            <div className="text-sm font-bold">{syncConnected ? "Connected to Cloudflare sync" : syncTarget === null ? "Local-only mode" : "Cloudflare sync not connected"}</div>
+            <div className="text-sm font-bold">{syncConnected ? "Connected to Cloudflare sync" : syncNeedsToken ? "Private sync token required" : syncTarget === null ? "Local-only mode" : "Cloudflare sync not connected"}</div>
           </div>
           {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
         </CardContent>

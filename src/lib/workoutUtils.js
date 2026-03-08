@@ -230,11 +230,10 @@ export function getSyncApiBase(url = "") {
   return null;
 }
 
-export function getSyncHeaders(includeJson = false) {
+export function getSyncHeaders(syncApiToken = "", includeJson = false) {
   const headers = {};
-  const token = import.meta.env.VITE_SYNC_API_TOKEN;
   if (includeJson) headers["Content-Type"] = "application/json";
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (syncApiToken) headers.Authorization = `Bearer ${syncApiToken}`;
   return headers;
 }
 

@@ -20,8 +20,8 @@ Optional frontend env values live in `.env` files. Start from:
 cp .env.example .env.local
 ```
 
-- `VITE_SYNC_API_URL` points the app at your deployed Worker without pasting it into the UI.
-- `VITE_SYNC_API_TOKEN` should match the Worker `API_TOKEN` secret when sync auth is enabled.
+- `VITE_SYNC_API_URL` can point the app at your deployed Worker without pasting it into the UI.
+- Do not ship your real sync token in a public build. Enter it inside the app on your own device instead.
 
 ## Cloudflare D1 Setup
 
@@ -59,16 +59,15 @@ ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127
 npx wrangler secret put API_TOKEN
 ```
 
-6. Add the same token to the frontend build as `VITE_SYNC_API_TOKEN` so the app can send `Authorization: Bearer ...` on sync requests.
-
-For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
+6. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
 Example `.env.local`:
 
 ```bash
 VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
-VITE_SYNC_API_TOKEN=your-long-random-token
 ```
+
+Then paste your private API token into the app's `Private Cloudflare API token` field on your own device. That avoids bundling the secret into a public web build.
 
 7. Apply migrations locally first:
 
@@ -104,11 +103,7 @@ npm run dev
 
 Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
 
-If you use auth locally, also expose the same token to Vite:
-
-```bash
-VITE_SYNC_API_TOKEN=your-local-token npm run dev
-```
+If you use auth locally, start the app and paste the local token into the in-app private token field.
 
 ## Production Deploy
 
@@ -122,8 +117,6 @@ Then either:
 
 - paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or
 - set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
-
-The frontend can also read the bearer token from `VITE_SYNC_API_TOKEN` during production builds.
 
 If you prefer not to hardcode the Worker URL in a build, you can still leave `VITE_SYNC_API_URL` unset and paste the URL into the in-app `Cloudflare sync API URL` field on the device.
 

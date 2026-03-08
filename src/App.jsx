@@ -95,13 +95,18 @@ export default function App() {
   useEffect(() => {
     const syncTarget = getSyncApiBase(state.syncApiUrl);
     if (syncTarget === null) return;
+    if (syncTarget !== "" && !state.syncApiToken.trim()) return;
 
     let cancelled = false;
 
     async function loadRemoteSnapshot() {
       try {
         setSyncStatus("Loading Cloudflare sync...");
-        const result = await loadHistorySummary(state.syncApiUrl);
+        const result = await loadHistorySummary(state.syncApiUrl, state.syncApiToken);
+        if (result.skipped) {
+          if (!cancelled) setSyncStatus("Cloudflare sync is locked until a private token is entered on this device.");
+          return;
+        }
         if (cancelled) return;
 
         setState((prev) => ({
@@ -119,7 +124,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [state.syncApiUrl, setState]);
+  }, [state.syncApiToken, state.syncApiUrl, setState]);
 
   useEffect(() => {
     if (state.setTimerRunning && state.setDurationRemaining > 0) {
@@ -251,6 +256,10 @@ export default function App() {
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
   const syncUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.syncApiUrl);
   const syncTarget = getSyncApiBase(state.syncApiUrl);
+  const syncNeedsToken = syncTarget !== null && syncTarget !== "" && !state.syncApiToken.trim();
+  const displayedSyncStatus = syncNeedsToken
+    ? "Enter your private Cloudflare API token on this device to enable sync."
+    : syncStatus;
   const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
   const tabs = [
     { id: "today", label: "Setup", icon: House },
@@ -276,8 +285,11 @@ export default function App() {
   const syncSessionToCloudflare = async (sessionRecord) => {
     try {
       setSyncStatus("Saving session to Cloudflare...");
-      const result = await createRemoteSession(state.syncApiUrl, sessionRecord);
-      if (result.skipped) return;
+      const result = await createRemoteSession(state.syncApiUrl, state.syncApiToken, sessionRecord);
+      if (result.skipped) {
+        setSyncStatus("Cloudflare sync is locked until a private token is entered on this device.");
+        return;
+      }
       setSyncStatus("Synced with Cloudflare");
     } catch {
       setSyncStatus("Cloudflare sync failed. Local save only.");
@@ -287,8 +299,11 @@ export default function App() {
   const deleteSessionRemote = async (sessionId) => {
     try {
       setSyncStatus("Deleting session from Cloudflare...");
-      const result = await deleteRemoteSession(state.syncApiUrl, sessionId);
-      if (result.skipped) return true;
+      const result = await deleteRemoteSession(state.syncApiUrl, state.syncApiToken, sessionId);
+      if (result.skipped) {
+        setSyncStatus("Cloudflare sync is locked until a private token is entered on this device.");
+        return true;
+      }
       setSyncStatus("Session deleted from Cloudflare");
       return true;
     } catch {
@@ -300,8 +315,11 @@ export default function App() {
   const updateSessionRemote = async (sessionId, sessionPatch) => {
     try {
       setSyncStatus("Updating session in Cloudflare...");
-      const result = await updateRemoteSession(state.syncApiUrl, sessionId, sessionPatch);
-      if (result.skipped) return true;
+      const result = await updateRemoteSession(state.syncApiUrl, state.syncApiToken, sessionId, sessionPatch);
+      if (result.skipped) {
+        setSyncStatus("Cloudflare sync is locked until a private token is entered on this device.");
+        return true;
+      }
       setSyncStatus("Session updated in Cloudflare");
       return true;
     } catch {
@@ -316,8 +334,11 @@ export default function App() {
 
     try {
       setSyncStatus("Saving set to Cloudflare...");
-      const result = await createRemoteLog(state.syncApiUrl, entry);
-      if (result.skipped) return;
+      const result = await createRemoteLog(state.syncApiUrl, state.syncApiToken, entry);
+      if (result.skipped) {
+        setSyncStatus("Cloudflare sync is locked until a private token is entered on this device.");
+        return;
+      }
       setSyncStatus("Synced with Cloudflare");
     } catch {
       setSyncStatus("Cloudflare sync failed. Local save only.");
@@ -637,8 +658,9 @@ export default function App() {
             startSession={startSession}
             updateState={updateState}
             syncConnected={syncConnected}
+            syncNeedsToken={syncNeedsToken}
             syncTarget={syncTarget}
-            syncStatus={syncStatus}
+            syncStatus={displayedSyncStatus}
             syncUrlLooksLikeSpreadsheet={syncUrlLooksLikeSpreadsheet}
           />
         )}
@@ -652,7 +674,7 @@ export default function App() {
             resolvedCurrentWeight={resolvedCurrentWeight}
             currentExerciseImage={currentExerciseImage}
             repGuideLabel={repGuideLabel}
-            syncStatus={syncStatus}
+            syncStatus={displayedSyncStatus}
             formatSeconds={formatSeconds}
             DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
             onExerciseImageError={handleExerciseImageError}
