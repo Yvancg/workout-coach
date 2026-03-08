@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import {
   Activity,
   ArrowUpRight,
@@ -212,6 +213,23 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+async function runHaptic(type = "light") {
+  try {
+    if (type === "success") {
+      await Haptics.notification({ type: NotificationType.Success });
+      return;
+    }
+
+    await Haptics.impact({
+      style: type === "medium" ? ImpactStyle.Medium : ImpactStyle.Light,
+    });
+  } catch {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(type === "success" ? [18, 20, 28] : type === "medium" ? 18 : 10);
+    }
+  }
+}
+
 function Card({ className = "", children, ...props }) {
   return <div className={`surface ${className}`.trim()} {...props}>{children}</div>;
 }
@@ -340,6 +358,7 @@ export default function App() {
       restRemaining: 0,
       restTimerRunning: false,
     });
+    runHaptic("medium");
     speak(`Session started. ${state.activeProgram}, day ${state.dayType}.`, state.soundEnabled);
   };
 
@@ -422,6 +441,7 @@ export default function App() {
       setTimerRunning: false,
       dayType: getNextDayType(state.dayType),
     });
+    runHaptic("success");
     speak("Session complete. Good work.", state.soundEnabled);
   };
 
@@ -451,6 +471,7 @@ export default function App() {
   };
 
   const resetSession = () => {
+    runHaptic("light");
     updateState({
       exerciseIndex: 0,
       currentSet: 1,
@@ -466,11 +487,15 @@ export default function App() {
   };
 
   const nextRep = () => {
+    runHaptic("light");
     updateState({ currentRep: state.currentRep + 1 });
     if ((state.currentRep + 1) % 5 === 0) speak(String(state.currentRep + 1), state.soundEnabled);
   };
 
-  const prevRep = () => updateState({ currentRep: Math.max(0, state.currentRep - 1) });
+  const prevRep = () => {
+    runHaptic("light");
+    updateState({ currentRep: Math.max(0, state.currentRep - 1) });
+  };
 
   const exportLogs = () => {
     const rows = [SHEET_HEADERS, ...state.logs.map((log) => SHEET_HEADERS.map((h) => log[h] ?? ""))];
@@ -494,7 +519,7 @@ export default function App() {
 
   return (
     <div className="app-shell min-h-screen bg-white text-black p-3 sm:p-6">
-      <div className="app-stack max-w-md mx-auto space-y-4 pb-10">
+      <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
         <div className="hero-card border-4 border-black rounded-3xl p-4">
           <div className="eyebrow">Workout Coach</div>
           <h1 className="text-3xl font-black tracking-tight">Minimal training flow, tuned for Android.</h1>
@@ -506,7 +531,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="tab-bar surface rounded-3xl p-3">
+        <div className="tab-bar-mobile surface rounded-3xl p-3">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = state.activeTab === tab.id;
@@ -517,7 +542,8 @@ export default function App() {
                 className={`tab-button ${isActive ? "tab-button-active bg-black text-white" : "bg-white text-black"}`}
                 onClick={() => updateState({ activeTab: tab.id })}
               >
-                <Icon className="h-5 w-5" /> {tab.label}
+                <span className="tab-icon-wrap"><Icon className="h-5 w-5" /></span>
+                <span>{tab.label}</span>
               </Button>
             );
           })}
@@ -534,7 +560,7 @@ export default function App() {
                   </div>
                   <div className="status-pill bg-black text-white">{completedTodaySets} sets logged</div>
                 </div>
-                <div className="stats-grid">
+                <div className="stats-grid compact-grid">
                   <div className="border-4 border-black rounded-2xl p-3 bg-white text-black">
                     <div className="text-sm font-black">Current focus</div>
                     <div className="text-lg font-black mt-1">{state.activeProgram}</div>
@@ -679,7 +705,7 @@ export default function App() {
                   <div className="status-pill">{Math.round(sessionProgress)}% done</div>
                 </div>
                 <Progress value={sessionProgress} className="h-4 border-2 border-black" />
-                <div className="space-y-2">
+                <div className="space-y-2 compact-list">
                   {exercises.map((exercise, idx) => (
                     <div
                       key={`${exercise.name}-${idx}`}
