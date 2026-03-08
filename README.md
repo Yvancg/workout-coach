@@ -7,7 +7,7 @@ React/Vite workout app with:
 
 ## Local App Dev
 
-Run the frontend:
+Install dependencies and start the frontend:
 
 ```bash
 npm install
@@ -73,11 +73,10 @@ Deploy the Worker:
 npm run cf:deploy
 ```
 
-Then paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or set:
+Then either:
 
-```bash
-VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
-```
+- paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or
+- set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
 
 ## API Routes
 
@@ -86,7 +85,32 @@ VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
 - `POST /api/logs`
 - `POST /api/sessions`
 
-## Notes
+## Stored Session Metadata
 
-- Session metadata stored in D1 includes notes, available weights, warmup completion, and stretch completion.
-- Local development can still run with no backend; sync is optional.
+D1 session records currently include:
+- session note
+- available weights
+- warmup completion
+- stretch completion
+
+## Exercise Reference Assets
+
+Current state:
+- `public/exercise-reference/` contains local placeholder reference cards used by the UI.
+- these are safe local stand-ins and do not hotlink external media
+
+Planned next step:
+- replace placeholders with true ExerciseDB-derived assets once source format and redistribution terms are confirmed
+
+Recommended import workflow:
+1. identify the exact ExerciseDB media source to use
+2. confirm the license/terms for redistribution in this repository
+3. import only the exercises used by this app into a local folder
+4. keep originals or a manifest outside git if licensing requires it
+5. update `THIRD_PARTY_NOTICES.md` with attribution/source details
+
+See `THIRD_PARTY_NOTICES.md` for the repository policy around third-party exercise media.
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.

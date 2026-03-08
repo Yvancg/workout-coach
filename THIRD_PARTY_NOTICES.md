@@ -1,0 +1,21 @@
+# Third-Party Notices
+
+## Exercise Reference Assets
+
+This project is being prepared to support locally cached exercise reference media derived from the ExerciseDB dataset and/or related ExerciseDB media endpoints.
+
+Current state:
+- `public/exercise-reference/` contains locally generated placeholder reference cards created for this project.
+- No third-party ExerciseDB-derived media files are currently committed in this repository.
+
+Before importing real ExerciseDB-derived assets into this repository, verify:
+- the exact source endpoint or dataset path being used
+- the applicable license and reuse terms for the media assets
+- whether attribution or additional notice text is required
+- whether redistribution in a public Git repository is allowed
+
+If real ExerciseDB-derived assets are later added, update this file with:
+- source URLs or dataset identifiers
+- license/terms summary
+- attribution text if required
+- the local directory where imported assets are stored

@@ -11,6 +11,23 @@ node_modules
 dist
 dist-ssr
 *.local
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+coverage/
+
+# Local Cloudflare / SQLite artifacts
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Optional imported exercise media workspace
+tmp/
+cache/
+scripts/.cache/
+public/exercise-reference/imported/
 
 # Editor directories and files
 .vscode/*
