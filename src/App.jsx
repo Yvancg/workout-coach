@@ -334,6 +334,7 @@ export default function App() {
   );
   const nextWorkout = `${state.activeProgram} - Day ${state.dayType}`;
   const latestSession = state.history[0] || null;
+  const activeThemeClass = `${state.activeTab}-theme`;
   const tabs = [
     { id: "today", label: "Today", icon: House },
     { id: "session", label: "Session", icon: Activity },
@@ -518,7 +519,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell min-h-screen bg-white text-black p-3 sm:p-6">
+    <div className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
         <div className="hero-card border-4 border-black rounded-3xl p-4">
           <div className="eyebrow">Workout Coach</div>
@@ -539,7 +540,7 @@ export default function App() {
             return (
               <Button
                 key={tab.id}
-                className={`tab-button ${isActive ? "tab-button-active bg-black text-white" : "bg-white text-black"}`}
+                className={`tab-button ${isActive ? `tab-button-active ${tab.id}-accent` : "bg-white text-black"}`}
                 onClick={() => updateState({ activeTab: tab.id })}
               >
                 <span className="tab-icon-wrap"><Icon className="h-5 w-5" /></span>
@@ -551,35 +552,35 @@ export default function App() {
 
         {state.activeTab === "today" && (
           <>
-            <Card className="border-4 border-black rounded-3xl shadow-none">
+            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
               <CardContent className="p-4 space-y-3">
                 <div className="split-header">
                   <div>
                     <div className="eyebrow">Today</div>
                     <div className="text-2xl font-black">Ready for {nextWorkout}</div>
                   </div>
-                  <div className="status-pill bg-black text-white">{completedTodaySets} sets logged</div>
+                  <div className="status-pill today-accent text-white">{completedTodaySets} sets logged</div>
                 </div>
                 <div className="stats-grid compact-grid">
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black">
+                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
                     <div className="text-sm font-black">Current focus</div>
                     <div className="text-lg font-black mt-1">{state.activeProgram}</div>
                     <div className="text-sm font-semibold">{currentProgramMeta.description}</div>
                   </div>
-                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black">
+                  <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
                     <div className="text-sm font-black">Last session</div>
                     <div className="text-lg font-black mt-1">{latestSession ? `${latestSession.durationMinutes} min` : "No history yet"}</div>
                     <div className="text-sm font-semibold">{latestSession ? `${latestSession.program} - Day ${latestSession.dayType}` : "Complete a workout to see trends."}</div>
                   </div>
                 </div>
-                <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-black text-white" onClick={startSession}>
+                <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent text-white" onClick={startSession}>
                   <Play className="mr-2 h-5 w-5" /> Start today&apos;s session
                 </Button>
               </CardContent>
             </Card>
 
             {state.installReady && (
-              <Card className="border-4 border-black rounded-3xl shadow-none">
+              <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
                 <CardContent className="p-4 space-y-3">
                   <div className="split-header">
                     <div>
@@ -589,18 +590,18 @@ export default function App() {
                     <div className="status-pill">PWA ready</div>
                   </div>
                   <div className="text-sm font-bold">Use the install button below. This works when the app is deployed as a PWA.</div>
-                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl bg-black text-white" onClick={installApp}>
+                  <Button className="w-full h-14 text-xl font-black border-4 border-black rounded-2xl today-accent text-white" onClick={installApp}>
                     <Download className="mr-2 h-5 w-5" /> Install App
                   </Button>
                 </CardContent>
               </Card>
             )}
 
-            <Card className="border-4 border-black rounded-3xl shadow-none">
-              <CardHeader>
+            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
+              <CardHeader className="card-block-header">
                 <CardTitle className="text-2xl font-black">Session Setup</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="card-block-body space-y-3">
                 <div>
                   <label className="block text-sm font-black mb-1">Program</label>
                   <select
@@ -621,7 +622,7 @@ export default function App() {
                     {["A", "B", "C"].map((day) => (
                       <Button
                         key={day}
-                        className={`h-14 text-2xl font-black border-4 border-black rounded-2xl ${state.dayType === day ? "bg-black text-white" : "bg-white text-black"}`}
+                        className={`h-14 text-2xl font-black border-4 border-black rounded-2xl ${state.dayType === day ? "today-accent text-white" : "bg-white text-black"}`}
                         onClick={() => updateState({ dayType: day, exerciseIndex: 0, currentSet: 1, currentRep: 0 })}
                       >
                         {day}
@@ -653,7 +654,7 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button
-                    className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "bg-black text-white" : "bg-white text-black"}`}
+                    className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent text-white" : "bg-white text-black"}`}
                     onClick={() => updateState({ soundEnabled: !state.soundEnabled })}
                   >
                     {state.soundEnabled ? <Volume2 className="mr-2 h-5 w-5" /> : <VolumeX className="mr-2 h-5 w-5" />} {state.soundEnabled ? "Voice On" : "Voice Off"}
@@ -665,11 +666,11 @@ export default function App() {
               </CardContent>
             </Card>
 
-            <Card className="border-4 border-black rounded-3xl shadow-none">
-              <CardHeader>
+            <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
+              <CardHeader className="card-block-header">
                 <CardTitle className="text-2xl font-black">Warm Up</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="card-block-body space-y-3">
                 <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
                   <iframe
                     className="w-full h-full"
@@ -680,7 +681,7 @@ export default function App() {
                   />
                 </div>
                 <Button
-                  className={`w-full h-14 text-xl font-black border-4 border-black rounded-2xl ${state.warmupDone ? "bg-black text-white" : "bg-white text-black"}`}
+                  className={`w-full h-14 text-xl font-black border-4 border-black rounded-2xl ${state.warmupDone ? "today-accent text-white" : "bg-white text-black"}`}
                   onClick={() => updateState({ warmupDone: !state.warmupDone })}
                 >
                   <CheckCircle2 className="mr-2 h-5 w-5" /> {state.warmupDone ? "Warm Up Done" : "Mark Warm Up Done"}
@@ -692,7 +693,7 @@ export default function App() {
 
         {state.activeTab === "session" && (
           <>
-            <Card className="border-4 border-black rounded-3xl shadow-none">
+            <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
               <CardHeader>
                 <CardTitle className="text-2xl font-black">Program of the Day</CardTitle>
               </CardHeader>
@@ -702,14 +703,14 @@ export default function App() {
                     <div className="eyebrow">Live session</div>
                     <div className="text-lg font-black">{currentExercise ? currentExercise.name : "Choose a workout to begin"}</div>
                   </div>
-                  <div className="status-pill">{Math.round(sessionProgress)}% done</div>
+                  <div className="status-pill session-accent text-white">{Math.round(sessionProgress)}% done</div>
                 </div>
                 <Progress value={sessionProgress} className="h-4 border-2 border-black" />
                 <div className="space-y-2 compact-list">
                   {exercises.map((exercise, idx) => (
                     <div
                       key={`${exercise.name}-${idx}`}
-                      className={`border-4 rounded-2xl p-3 ${idx === state.exerciseIndex ? "border-black bg-black text-white" : "border-black bg-white text-black"}`}
+                      className={`border-4 rounded-2xl p-3 ${idx === state.exerciseIndex ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}
                     >
                       <div className="text-lg font-black">{exercise.name}</div>
                       <div className="text-sm font-bold">{exercise.sets} sets • {exercise.reps} {exercise.isTime ? "sec" : "reps"} • {exercise.weight}</div>
@@ -720,12 +721,12 @@ export default function App() {
             </Card>
 
             {currentExercise && (
-              <Card className="border-4 border-black rounded-3xl shadow-none">
+              <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
                 <CardHeader>
                   <CardTitle className="text-2xl font-black">Current Exercise</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="border-4 border-black rounded-3xl p-4 bg-black text-white">
+                  <div className="border-4 border-black rounded-3xl p-4 session-accent text-white">
                     <div className="text-3xl font-black leading-tight">{currentExercise.name}</div>
                     <div className="mt-2 text-lg font-bold">Set {state.currentSet} / {currentExercise.sets}</div>
                   </div>
@@ -764,7 +765,7 @@ export default function App() {
                         <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={prevRep}>
                           <Minus className="mr-2 h-5 w-5" /> Rep
                         </Button>
-                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-black text-white" onClick={nextRep}>
+                        <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={nextRep}>
                           <Plus className="mr-2 h-5 w-5" /> Rep
                         </Button>
                       </div>
@@ -774,7 +775,7 @@ export default function App() {
                       <div className="text-sm font-black">Set timer</div>
                       <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
                       <div className="grid grid-cols-2 gap-3">
-                        <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-black text-white" onClick={toggleSetTimer}>
+                        <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>
                           <Clock3 className="mr-2 h-5 w-5" /> {state.setTimerRunning ? "Pause" : "Start"}
                         </Button>
                         <Button
@@ -787,7 +788,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl bg-black text-white" onClick={completeSet}>
+                  <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}>
                     <Save className="mr-2 h-5 w-5" /> Complete Set and Save
                   </Button>
 
@@ -815,7 +816,7 @@ export default function App() {
               </Card>
             )}
 
-            <Card className="border-4 border-black rounded-3xl shadow-none">
+            <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
               <CardContent className="p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
@@ -831,7 +832,7 @@ export default function App() {
         )}
 
         {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none">
+          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
             <CardHeader>
               <CardTitle className="text-2xl font-black">Session Log</CardTitle>
             </CardHeader>
@@ -840,7 +841,7 @@ export default function App() {
                 <div className="border-4 border-black rounded-2xl p-4 text-lg font-bold">No sets saved yet.</div>
               ) : (
                 state.logs.slice().reverse().slice(0, 12).map((log, idx) => (
-                  <div key={`${log.timestamp}-${idx}`} className="border-4 border-black rounded-2xl p-3">
+                  <div key={`${log.timestamp}-${idx}`} className="border-4 border-black rounded-2xl p-3 history-subpanel">
                     <div className="text-lg font-black">{log.exercise} • Set {log.setNumber}</div>
                     <div className="text-sm font-bold">{log.completed} / {log.target} {log.isTime ? "sec" : "reps"} • {log.weightGuide}</div>
                   </div>
@@ -851,13 +852,13 @@ export default function App() {
         )}
 
         {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none">
+          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
             <CardHeader>
               <CardTitle className="text-2xl font-black">History and Export</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-black text-white" onClick={exportLogs}>
+                <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl history-accent text-white" onClick={exportLogs}>
                   <Download className="mr-2 h-5 w-5" /> Export CSV
                 </Button>
                 <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}>
@@ -872,7 +873,7 @@ export default function App() {
                   <div className="border-4 border-black rounded-2xl p-4 text-base font-bold">No completed sessions yet.</div>
                 ) : (
                   state.history.slice(0, 8).map((item, idx) => (
-                    <div key={`${item.sessionId}-${idx}`} className="border-4 border-black rounded-2xl p-3">
+                    <div key={`${item.sessionId}-${idx}`} className="border-4 border-black rounded-2xl p-3 history-subpanel">
                       <div className="text-lg font-black">{item.date} • {item.program}</div>
                       <div className="text-sm font-bold">Day {item.dayType} • {item.durationMinutes} min • {item.setsCompleted} sets</div>
                     </div>
@@ -884,15 +885,15 @@ export default function App() {
         )}
 
         {state.activeTab === "history" && (
-          <Card className="border-4 border-black rounded-3xl shadow-none">
+          <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
             <CardHeader>
               <CardTitle className="text-2xl font-black">Android Deployment</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm font-bold">
-              <div className="border-4 border-black rounded-2xl p-3">Frontend: React app deployed on Cloudflare Pages free plan.</div>
-              <div className="border-4 border-black rounded-2xl p-3">PWA: manifest + service worker for installable Android support and offline shell.</div>
-              <div className="border-4 border-black rounded-2xl p-3">Capacitor: Android wrapper can package the same UI as a native app shell.</div>
-              <div className="border-4 border-black rounded-2xl p-3">Data sync: Google Apps Script or local storage with CSV export.</div>
+              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Frontend: React app deployed on Cloudflare Pages free plan.</div>
+              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">PWA: manifest + service worker for installable Android support and offline shell.</div>
+              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Capacitor: Android wrapper can package the same UI as a native app shell.</div>
+              <div className="border-4 border-black rounded-2xl p-3 history-subpanel">Data sync: Google Apps Script or local storage with CSV export.</div>
             </CardContent>
           </Card>
         )}
