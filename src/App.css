@@ -300,6 +300,44 @@
   text-underline-offset: 0.18rem;
 }
 
+.exercise-reference-media {
+  background: #f7f4ef;
+}
+
+.exercise-reference-image {
+  display: block;
+  width: 100%;
+  height: 11rem;
+  object-fit: cover;
+}
+
+.history-session-group {
+  padding: 1rem 0;
+  border-bottom: 1px solid rgba(24, 24, 24, 0.08);
+}
+
+.history-session-group:first-child {
+  padding-top: 0;
+}
+
+.history-session-group:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.history-session-head {
+  margin-bottom: 0.75rem;
+}
+
+.history-exercise-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.history-exercise-row {
+  padding: 0.2rem 0;
+}
+
 .ui-button {
   display: inline-flex;
   align-items: center;

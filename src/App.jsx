@@ -22,6 +22,7 @@ import {
 import "./App.css";
 
 const STORAGE_KEY = "yvan-workout-coach-v2";
+const DEFAULT_REST_SECONDS = 30;
 const SHEET_HEADERS = [
   "timestamp",
   "date",
@@ -283,6 +284,76 @@ function getExerciseReferenceUrl(name = "") {
   return EXERCISE_REFERENCES[name] || `https://www.google.com/search?q=${encodeURIComponent(`site:athlemove.com/exercises ${name}`)}`;
 }
 
+function getExerciseReferenceImage(name = "") {
+  const slug = name
+    .toLowerCase()
+    .replaceAll("/", "-")
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `/exercise-reference/${slug}.svg`;
+}
+
+function summarizeSessionLogs(logs, sessions) {
+  const grouped = sessions.map((session) => {
+    const sessionLogs = logs.filter((log) => log.sessionId === session.sessionId);
+    const byExercise = sessionLogs.reduce((acc, log) => {
+      const key = log.exercise;
+      if (!acc[key]) {
+        acc[key] = {
+          exercise: log.exercise,
+          sets: 0,
+          completed: 0,
+          target: log.target,
+          isTime: log.isTime,
+        };
+      }
+      acc[key].sets += 1;
+      acc[key].completed += Number(log.completed) || 0;
+      return acc;
+    }, {});
+
+    return {
+      ...session,
+      exercises: Object.values(byExercise),
+    };
+  });
+
+  if (grouped.length) return grouped;
+
+  const fallbackGrouped = Object.values(logs.reduce((acc, log) => {
+    const sessionId = log.sessionId || `${log.date}-${log.program}-${log.dayType}`;
+    if (!acc[sessionId]) {
+      acc[sessionId] = {
+        sessionId,
+        date: log.date,
+        program: log.program,
+        dayType: log.dayType,
+        durationMinutes: log.durationMinutes,
+        setsCompleted: 0,
+        exercises: [],
+      };
+    }
+    acc[sessionId].setsCompleted += 1;
+    const existing = acc[sessionId].exercises.find((item) => item.exercise === log.exercise);
+    if (existing) {
+      existing.sets += 1;
+      existing.completed += Number(log.completed) || 0;
+    } else {
+      acc[sessionId].exercises.push({
+        exercise: log.exercise,
+        sets: 1,
+        completed: Number(log.completed) || 0,
+        target: log.target,
+        isTime: log.isTime,
+      });
+    }
+    return acc;
+  }, {}));
+
+  return fallbackGrouped.slice().reverse();
+}
+
 function confirmAction(message, callback) {
   if (typeof window === "undefined" || window.confirm(message)) {
     callback();
@@ -387,13 +458,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
-
-  useEffect(() => {
-    const sheetWebhookUrl = state.sheetWebhookUrl;
-    if (sheetWebhookUrl && !state.syncApiUrl) {
-      setState((prev) => ({ ...prev, syncApiUrl: sheetWebhookUrl }));
-    }
-  }, [state.sheetWebhookUrl, state.syncApiUrl]);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (e) => {
@@ -554,6 +618,8 @@ export default function App() {
   const activeThemeClass = `${state.activeTab}-theme`;
   const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
   const currentExerciseReference = currentExercise ? getExerciseReferenceUrl(currentExercise.name) : "";
+  const currentExerciseImage = currentExercise ? getExerciseReferenceImage(currentExercise.name) : "";
+  const sessionSummaries = useMemo(() => summarizeSessionLogs(state.logs, state.history).slice(0, 8), [state.logs, state.history]);
   const repGuideLabel = currentExercise?.isTime
     ? ""
     : isAlternateExercise(currentExercise?.name || "")
@@ -767,14 +833,14 @@ export default function App() {
       completed: completedValue,
       isTime: !!currentExercise.isTime,
       weightGuide: resolveWeightGuide(currentExercise.weight, state.availableWeights),
-      tempo: currentExercise.tempo,
-      rest: currentExercise.rest,
+      tempo: currentExercise.isTime ? currentExercise.tempo : "2-2-3 voice",
+      rest: DEFAULT_REST_SECONDS,
       sessionId: state.sessionId,
       durationMinutes: currentSessionDurationMinutes(),
     };
 
     await saveSetLocally(entry);
-    moveToNextStage(currentExercise.rest);
+    moveToNextStage(DEFAULT_REST_SECONDS);
   };
 
   const resetSession = () => {
@@ -1101,13 +1167,16 @@ export default function App() {
                     </div>
                     <div className="border-4 border-black rounded-2xl p-3">
                       <div className="text-sm font-black">Tempo / Rest</div>
-                      <div className="text-2xl font-black mt-1">{currentExercise.tempo}</div>
-                      <div className="text-lg font-bold">{currentExercise.rest}s rest</div>
+                      <div className="text-2xl font-black mt-1">{currentExercise.isTime ? currentExercise.tempo : "2-2-3 + 1s"}</div>
+                      <div className="text-lg font-bold">{DEFAULT_REST_SECONDS}s rest</div>
                     </div>
                   </div>
 
                   <div className="border-4 border-black rounded-2xl p-3">
                     <div className="text-sm font-black mb-2">Coaching cues</div>
+                    <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
+                      <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} />
+                    </div>
                     <ul className="space-y-1">
                       {currentExercise.cues?.map((cue) => (
                         <li key={cue} className="text-base font-bold flex items-start gap-2"><ChevronRight className="h-4 w-4 mt-1" /> {cue}</li>
@@ -1125,7 +1194,7 @@ export default function App() {
                     <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
                       <div className="text-sm font-black">Voice-guided rep count</div>
                       <div className="text-6xl font-black">{state.currentRep}</div>
-                      <div className="text-sm font-bold">{repGuideLabel} • 2-2-3 tempo {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
+                      <div className="text-sm font-bold">{repGuideLabel} • 2-2-3 tempo with 1s reset {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
                       <div className="grid grid-cols-2 gap-3">
                         <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}>
                           <RotateCcw className="mr-2 h-5 w-5" /> Restart
@@ -1161,10 +1230,10 @@ export default function App() {
                     <div className="text-sm font-black">Rest timer</div>
                     <div className="text-6xl font-black">{formatSeconds(state.restRemaining)}</div>
                     <div className="grid grid-cols-2 gap-3">
-                      <Button
-                        className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
-                        onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || currentExercise.rest })}
-                      >
+                        <Button
+                          className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black"
+                          onClick={() => updateState({ restTimerRunning: !state.restTimerRunning || state.restRemaining === 0, restRemaining: state.restRemaining || DEFAULT_REST_SECONDS })}
+                        >
                         <TimerReset className="mr-2 h-5 w-5" /> {state.restTimerRunning ? "Pause" : "Start"}
                       </Button>
                       <Button
@@ -1226,13 +1295,23 @@ export default function App() {
               <CardTitle className="text-2xl font-black">Session Log</CardTitle>
             </CardHeader>
             <CardContent className="card-block-body space-y-2">
-              {state.logs.length === 0 ? (
+              {sessionSummaries.length === 0 ? (
                 <div className="border-4 border-black rounded-2xl p-4 text-lg font-bold">No sets saved yet.</div>
               ) : (
-                state.logs.slice().reverse().slice(0, 12).map((log, idx) => (
-                  <div key={`${log.timestamp}-${idx}`} className="border-4 border-black rounded-2xl p-3 history-subpanel">
-                    <div className="text-lg font-black">{log.exercise} • Set {log.setNumber}</div>
-                    <div className="text-sm font-bold">{log.completed} / {log.target} {log.isTime ? "sec" : "reps"} • {log.weightGuide}</div>
+                sessionSummaries.map((session) => (
+                  <div key={session.sessionId} className="history-session-group">
+                    <div className="history-session-head">
+                      <div className="text-lg font-black">{session.date} • {session.program}</div>
+                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets</div>
+                    </div>
+                    <div className="history-exercise-list">
+                      {session.exercises.map((exercise) => (
+                        <div key={`${session.sessionId}-${exercise.exercise}`} className="history-exercise-row">
+                          <div className="text-base font-black">{exercise.exercise}</div>
+                          <div className="text-sm font-bold">{exercise.sets} sets • {exercise.completed} total {exercise.isTime ? "sec" : "reps"}</div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))
               )}
@@ -1258,18 +1337,7 @@ export default function App() {
               <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={clearAllData}>
                 Clear All Local Data
               </Button>
-              <div className="space-y-2">
-                {state.history.length === 0 ? (
-                  <div className="border-4 border-black rounded-2xl p-4 text-base font-bold">No completed sessions yet.</div>
-                ) : (
-                  state.history.slice(0, 8).map((item, idx) => (
-                    <div key={`${item.sessionId}-${idx}`} className="border-4 border-black rounded-2xl p-3 history-subpanel">
-                      <div className="text-lg font-black">{item.date} • {item.program}</div>
-                      <div className="text-sm font-bold">Day {item.dayType} • {item.durationMinutes} min • {item.setsCompleted} sets</div>
-                    </div>
-                  ))
-                )}
-              </div>
+              <div className="text-sm font-bold">Export gives you the full raw set log as CSV. The on-screen history stays grouped by session and exercise.</div>
             </CardContent>
           </Card>
         )}
