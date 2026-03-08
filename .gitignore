@@ -27,7 +27,6 @@ coverage/
 tmp/
 cache/
 scripts/.cache/
-public/exercise-reference/imported/
 
 # Editor directories and files
 .vscode/*
