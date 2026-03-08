@@ -73,7 +73,15 @@ npx wrangler secret put API_TOKEN
 [vars]
 ACCESS_ALLOW_EMAILS = "you@example.com"
 ACCESS_FALLBACK_OWNER_EMAIL = "you@example.com"
+ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+ACCESS_AUD = "your-access-audience-tag"
+WRITE_RATE_LIMIT_MAX = "60"
+WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
 ```
+
+- `ACCESS_TEAM_DOMAIN` is your Zero Trust team domain.
+- `ACCESS_AUD` is the audience value from the Access application.
+- `WRITE_RATE_LIMIT_MAX` and `WRITE_RATE_LIMIT_WINDOW_SECONDS` cap write bursts on sync routes.
 
 8. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
@@ -84,6 +92,8 @@ VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
 ```
 
 The app will use Cloudflare Access session cookies for authenticated sync requests. No frontend bearer token is required.
+
+When `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, the Worker verifies `Cf-Access-Jwt-Assertion` against the Cloudflare Access JWKS instead of trusting the email header alone.
 
 9. Apply migrations locally first:
 
@@ -140,6 +150,7 @@ If you prefer not to hardcode the Worker URL in a build, you can still leave `VI
 
 - `GET /api/health`
 - `GET /api/snapshot` (auth required)
+- `GET /api/whoami` (auth required)
 - `GET /api/history-summary` (auth required)
 - `POST /api/logs` (auth required)
 - `POST /api/sessions` (auth required)

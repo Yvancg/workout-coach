@@ -6,6 +6,10 @@ compatibility_date = "2026-03-08"
 ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
 ACCESS_ALLOW_EMAILS = "your-email@example.com"
 ACCESS_FALLBACK_OWNER_EMAIL = "your-email@example.com"
+ACCESS_TEAM_DOMAIN = "your-team.cloudflareaccess.com"
+ACCESS_AUD = "your-access-audience-tag"
+WRITE_RATE_LIMIT_MAX = "60"
+WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
 
 [[d1_databases]]
 binding = "DB"

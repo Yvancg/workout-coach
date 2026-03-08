@@ -117,6 +117,10 @@ export default function App() {
         setSyncStatus("Cloudflare sync connected");
       } catch (error) {
         if (cancelled) return;
+        if (error?.status === 429) {
+          setSyncStatus("Cloudflare sync is temporarily rate limited.");
+          return;
+        }
         if (error?.status === 401 || error?.status === 403) {
           setSyncIdentityEmail("");
           setSyncStatus("Cloudflare Access login required.");
@@ -293,7 +297,7 @@ export default function App() {
       if (result.skipped) return;
       setSyncStatus("Synced with Cloudflare");
     } catch (error) {
-      setSyncStatus(error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
+      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
     }
   };
 
@@ -305,7 +309,7 @@ export default function App() {
       setSyncStatus("Session deleted from Cloudflare");
       return true;
     } catch (error) {
-      setSyncStatus(error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare delete failed. Local session removed.");
+      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare delete failed. Local session removed.");
       return false;
     }
   };
@@ -318,7 +322,7 @@ export default function App() {
       setSyncStatus("Session updated in Cloudflare");
       return true;
     } catch (error) {
-      setSyncStatus(error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare update failed. Local session updated.");
+      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare update failed. Local session updated.");
       return false;
     }
   };
@@ -333,7 +337,7 @@ export default function App() {
       if (result.skipped) return;
       setSyncStatus("Synced with Cloudflare");
     } catch (error) {
-      setSyncStatus(error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
+      setSyncStatus(error?.status === 429 ? "Cloudflare sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Cloudflare Access login required." : "Cloudflare sync failed. Local save only.");
     }
   };
 

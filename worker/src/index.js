@@ -1,3 +1,5 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
 function getAllowedOrigins(env) {
   const configured = env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) || [];
   return configured.length ? configured : [
@@ -74,15 +76,53 @@ function getAllowedEmails(env) {
   return env.ACCESS_ALLOW_EMAILS?.split(",").map((value) => value.trim().toLowerCase()).filter(Boolean) || [];
 }
 
-function getRequestIdentity(request, env) {
+function getAccessAudiences(env) {
+  return env.ACCESS_AUD?.split(",").map((value) => value.trim()).filter(Boolean) || [];
+}
+
+function getAccessIssuer(env) {
+  const teamDomain = env.ACCESS_TEAM_DOMAIN?.trim();
+  return teamDomain ? `https://${teamDomain}` : "";
+}
+
+function createHttpError(status, message, headers = {}) {
+  const error = new Error(message);
+  error.status = status;
+  error.headers = headers;
+  return error;
+}
+
+async function verifyAccessJwt(request, env, accessEmail) {
+  const issuer = getAccessIssuer(env);
+  const audiences = getAccessAudiences(env);
+  if (!issuer || !audiences.length) return;
+
+  const assertion = request.headers.get("Cf-Access-Jwt-Assertion") || "";
+  if (!assertion) {
+    throw createHttpError(401, "Access token missing");
+  }
+
+  const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+  const { payload } = await jwtVerify(assertion, jwks, {
+    issuer,
+    audience: audiences,
+  });
+
+  const jwtEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  if (!jwtEmail || jwtEmail !== accessEmail) {
+    throw createHttpError(403, "Access identity mismatch");
+  }
+}
+
+async function getRequestIdentity(request, env) {
   const accessEmail = (request.headers.get("Cf-Access-Authenticated-User-Email") || "").trim().toLowerCase();
   const allowedEmails = getAllowedEmails(env);
 
   if (accessEmail) {
+    await verifyAccessJwt(request, env, accessEmail);
+
     if (allowedEmails.length && !allowedEmails.includes(accessEmail)) {
-      const error = new Error("Access denied");
-      error.status = 403;
-      throw error;
+      throw createHttpError(403, "Access denied");
     }
 
     return { ownerEmail: accessEmail };
@@ -90,17 +130,13 @@ function getRequestIdentity(request, env) {
 
   const expectedToken = env.API_TOKEN;
   if (!expectedToken) {
-    const error = new Error("Login required");
-    error.status = 401;
-    throw error;
+    throw createHttpError(401, "Login required");
   }
 
   const authHeader = request.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (token !== expectedToken) {
-    const error = new Error("Unauthorized");
-    error.status = 401;
-    throw error;
+    throw createHttpError(401, "Unauthorized");
   }
 
   const fallbackOwner = (env.ACCESS_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
@@ -146,6 +182,55 @@ function buildWhoAmI(identity) {
     authenticated: true,
     email: identity.ownerEmail,
   };
+}
+
+function isWriteRequest(request, url) {
+  return url.pathname.startsWith("/api/") && ["POST", "PATCH", "DELETE"].includes(request.method);
+}
+
+function getRateLimitWindowSeconds(env) {
+  const value = Number.parseInt(env.WRITE_RATE_LIMIT_WINDOW_SECONDS || "60", 10);
+  return Number.isFinite(value) && value > 0 ? value : 60;
+}
+
+function getRateLimitMax(env) {
+  const value = Number.parseInt(env.WRITE_RATE_LIMIT_MAX || "60", 10);
+  return Number.isFinite(value) && value > 0 ? value : 60;
+}
+
+async function assertWriteRateLimit(request, url, env, identity) {
+  if (!isWriteRequest(request, url)) return;
+
+  const db = ensureDb(env);
+  const windowSeconds = getRateLimitWindowSeconds(env);
+  const maxRequests = getRateLimitMax(env);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const bucket = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
+  const bucketKey = `${identity.ownerEmail}:${request.method}:${url.pathname}:${bucket}`;
+
+  await db.prepare(`
+    INSERT INTO request_rate_limits (bucket_key, window_start, request_count, updated_at)
+    VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+    ON CONFLICT(bucket_key) DO UPDATE SET
+      request_count = request_count + 1,
+      updated_at = CURRENT_TIMESTAMP
+  `).bind(bucketKey, bucket).run();
+
+  const current = await db.prepare(`
+    SELECT request_count
+    FROM request_rate_limits
+    WHERE bucket_key = ?
+  `).bind(bucketKey).first();
+
+  if ((current?.request_count || 0) > maxRequests) {
+    const retryAfter = String(Math.max(1, bucket + windowSeconds - nowSeconds));
+    throw createHttpError(429, "Rate limit exceeded", { "Retry-After": retryAfter });
+  }
+
+  if (Math.random() < 0.05) {
+    const cutoff = new Date((nowSeconds - windowSeconds * 10) * 1000).toISOString();
+    db.prepare(`DELETE FROM request_rate_limits WHERE updated_at < ?`).bind(cutoff).run().catch(() => {});
+  }
 }
 
 async function handleSnapshot(env, identity) {
@@ -346,7 +431,10 @@ export default {
 
     try {
       assertAllowedOrigin(request, env);
-      const identity = url.pathname === "/api/health" ? null : getRequestIdentity(request, env);
+      const identity = url.pathname === "/api/health" ? null : await getRequestIdentity(request, env);
+      if (identity) {
+        await assertWriteRateLimit(request, url, env, identity);
+      }
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         return json({ ok: true, service: "workout-coach-api" }, request, env);
