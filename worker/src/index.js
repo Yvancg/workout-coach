@@ -1,6 +1,11 @@
 function getAllowedOrigins(env) {
   const configured = env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) || [];
-  return configured.length ? configured : ["http://localhost:5173", "http://127.0.0.1:5173"];
+  return configured.length ? configured : [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://localhost",
+    "capacitor://localhost",
+  ];
 }
 
 function getCorsHeaders(request, env) {

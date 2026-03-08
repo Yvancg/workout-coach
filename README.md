@@ -50,7 +50,7 @@ database_id = "YOUR_REAL_DATABASE_ID"
 
 ```toml
 [vars]
-ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
 ```
 
 5. Create the Worker API token as a Cloudflare secret:
@@ -60,6 +60,8 @@ npx wrangler secret put API_TOKEN
 ```
 
 6. Add the same token to the frontend build as `VITE_SYNC_API_TOKEN` so the app can send `Authorization: Bearer ...` on sync requests.
+
+For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
 Example `.env.local`:
 
