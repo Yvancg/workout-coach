@@ -172,6 +172,33 @@ const REP_PHASES = [
   { label: "Lift", seconds: 2 },
 ];
 
+const EXERCISE_REFERENCES = {
+  "Chair Squat": "https://athlemove.com/exercises/squat/",
+  "Goblet Squat": "https://athlemove.com/exercises/goblet-squat/",
+  "Split Squat": "https://athlemove.com/exercises/bulgarian-split-squat/",
+  "Reverse Lunge": "https://athlemove.com/exercises/reverse-lunge/",
+  "Step-Up": "https://athlemove.com/exercises/step-up/",
+  "DB Chest Press": "https://athlemove.com/exercises/dumbbell-bench-press/",
+  "Floor Press": "https://athlemove.com/exercises/dumbbell-floor-press/",
+  "DB Row": "https://athlemove.com/exercises/one-arm-dumbbell-row/",
+  "Shoulder Press": "https://athlemove.com/exercises/dumbbell-shoulder-press/",
+  "Lateral Raise": "https://athlemove.com/exercises/lateral-raise/",
+  "Front Raise": "https://athlemove.com/exercises/front-raise/",
+  "Biceps Curl": "https://athlemove.com/exercises/dumbbell-biceps-curl/",
+  "Hammer Curl": "https://athlemove.com/exercises/hammer-curl/",
+  "Reverse Curl": "https://athlemove.com/exercises/reverse-curl/",
+  "Triceps Extension": "https://athlemove.com/exercises/overhead-triceps-extension/",
+  "Overhead Triceps Extension": "https://athlemove.com/exercises/overhead-triceps-extension/",
+  "Calf Raise": "https://athlemove.com/exercises/calf-raise/",
+  Plank: "https://athlemove.com/exercises/plank/",
+  "Bicycle Crunch": "https://athlemove.com/exercises/bicycle-crunch/",
+  Pullover: "https://athlemove.com/exercises/dumbbell-pullover/",
+  "Side Bend": "https://athlemove.com/exercises/side-bend/",
+  "Farmer Carry": "https://athlemove.com/exercises/farmers-carry/",
+  "Walk / March": "https://athlemove.com/exercises/march/",
+  "Push-Up": "https://athlemove.com/exercises/push-up/",
+};
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -257,7 +284,7 @@ function resolveWeightGuide(guide, availableWeightsInput) {
 }
 
 function getExerciseReferenceUrl(name = "") {
-  return `https://www.google.com/search?q=${encodeURIComponent(`site:athlemove.com/exercises ${name}`)}`;
+  return EXERCISE_REFERENCES[name] || `https://www.google.com/search?q=${encodeURIComponent(`site:athlemove.com/exercises ${name}`)}`;
 }
 
 function confirmAction(message, callback) {
@@ -413,6 +440,10 @@ export default function App() {
         if (!exercise || exercise.isTime || !prev.repGuideRunning) return prev;
 
         if (prev.repGuidePhaseRemaining > 1) {
+          const phase = REP_PHASES[prev.repGuidePhaseIndex];
+          if (phase?.label === "Hold" || phase?.label === "Lift") {
+            speak(String(prev.repGuidePhaseRemaining - 1), prev.soundEnabled);
+          }
           return { ...prev, repGuidePhaseRemaining: prev.repGuidePhaseRemaining - 1 };
         }
 
@@ -428,7 +459,7 @@ export default function App() {
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            speak("Right", prev.soundEnabled);
+            speak("Switch sides. Right. Lower", prev.soundEnabled);
             return {
               ...prev,
               repGuideSide: "right",
@@ -439,7 +470,7 @@ export default function App() {
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          speak(String(nextRep), prev.soundEnabled);
+          speak(done ? `Rep ${nextRep}. Set complete.` : `Rep ${nextRep}. Left. Lower`, prev.soundEnabled);
 
           return {
             ...prev,
@@ -453,7 +484,7 @@ export default function App() {
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        speak(String(nextRep), prev.soundEnabled);
+        speak(done ? `Rep ${nextRep}. Set complete.` : `Rep ${nextRep}. Lower`, prev.soundEnabled);
 
         return {
           ...prev,
@@ -748,7 +779,7 @@ export default function App() {
       repGuidePhaseRemaining: REP_PHASES[0].seconds,
       repGuideSide: nextSide,
     });
-    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. ${REP_PHASES[0].label}` : REP_PHASES[0].label, state.soundEnabled);
+    speak(isAlternateExercise(currentExercise.name) ? `${nextSide === "left" ? "Left" : "Right"}. Lower` : "Lower", state.soundEnabled);
   };
 
   const restartRepGuide = () => {
@@ -924,10 +955,11 @@ export default function App() {
         {state.activeTab === "session" && (
           <>
             <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-              <CardHeader>
+              <CardHeader className="card-block-header">
+                <div className="eyebrow">Session</div>
                 <CardTitle className="text-2xl font-black">Program of the Day</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="card-block-body space-y-3">
                 <div className="split-header">
                   <div>
                     <div className="eyebrow">Live session</div>
@@ -977,10 +1009,11 @@ export default function App() {
 
             {state.sessionStage === "warmup" && (
               <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader>
+                <CardHeader className="card-block-header">
+                  <div className="eyebrow">Session</div>
                   <CardTitle className="text-2xl font-black">Warm Up First</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="card-block-body space-y-3">
                   <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
                     <iframe
                       className="w-full h-full"
@@ -999,10 +1032,11 @@ export default function App() {
 
             {currentExercise && (
               <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader>
+                <CardHeader className="card-block-header">
+                  <div className="eyebrow">Session</div>
                   <CardTitle className="text-2xl font-black">Current Exercise</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="card-block-body space-y-4">
                   <div className="border-4 border-black rounded-3xl p-4 session-accent text-white">
                     <div className="text-3xl font-black leading-tight">{currentExercise.name}</div>
                     <div className="mt-2 text-lg font-bold">Set {state.currentSet} / {currentExercise.sets}</div>
@@ -1097,10 +1131,11 @@ export default function App() {
 
             {state.sessionStage === "stretch" && (
               <Card className="border-4 border-black rounded-3xl shadow-none session-panel">
-                <CardHeader>
+                <CardHeader className="card-block-header">
+                  <div className="eyebrow">Session</div>
                   <CardTitle className="text-2xl font-black">Finish with Stretches</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="card-block-body space-y-3">
                   <div className="aspect-video rounded-2xl overflow-hidden border-4 border-black">
                     <iframe
                       className="w-full h-full"
@@ -1134,10 +1169,11 @@ export default function App() {
 
         {state.activeTab === "history" && (
           <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
-            <CardHeader>
+            <CardHeader className="card-block-header">
+              <div className="eyebrow">History</div>
               <CardTitle className="text-2xl font-black">Session Log</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="card-block-body space-y-2">
               {state.logs.length === 0 ? (
                 <div className="border-4 border-black rounded-2xl p-4 text-lg font-bold">No sets saved yet.</div>
               ) : (
@@ -1154,10 +1190,11 @@ export default function App() {
 
         {state.activeTab === "history" && (
           <Card className="border-4 border-black rounded-3xl shadow-none history-panel">
-            <CardHeader>
+            <CardHeader className="card-block-header">
+              <div className="eyebrow">History</div>
               <CardTitle className="text-2xl font-black">History and Export</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="card-block-body space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl history-accent text-white" onClick={exportLogs}>
                   <Download className="mr-2 h-5 w-5" /> Export CSV
