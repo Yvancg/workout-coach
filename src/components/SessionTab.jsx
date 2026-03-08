@@ -143,7 +143,7 @@ export function SessionTab({
               <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
-                <div className="text-sm font-bold">{repGuideLabel} • up, 2, hold, 2, down, 2, 3, hold {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
+                <div className="text-sm font-bold">{repGuideLabel} {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}><RotateCcw className="mr-2 h-5 w-5" /> Restart</Button>
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning ? "Pause" : "Start"}</Button>
