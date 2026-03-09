@@ -413,6 +413,16 @@ async function handleSessionCreate(request, env, identity) {
   }
 
   const db = ensureDb(env);
+  const existing = await db.prepare(`
+    SELECT session_id, owner_id, owner_email
+    FROM session_history
+    WHERE session_id = ?
+  `).bind(payload.sessionId).first();
+
+  if (existing && existing.owner_id !== identity.ownerId && existing.owner_email !== identity.ownerEmail) {
+    return json({ error: "Session id already belongs to another user" }, request, env, { status: 409 });
+  }
+
   await db.prepare(`
     INSERT OR REPLACE INTO session_history (
       session_id, date, program, day_type, duration_minutes, sets_completed,

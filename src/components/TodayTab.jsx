@@ -21,10 +21,11 @@ export function TodayTab({
   signInWithMagicLink,
   signOut,
   updateState,
+  toggleSoundEnabled,
   onVoiceSelect,
-  syncConnected,
 }) {
   const authSignedIn = Boolean(authUserEmail);
+  const syncIndicatorClass = authSignedIn ? "sync-indicator-live" : "sync-indicator-warning";
   const syncModeLabel = !authConfigured
     ? "Login not configured"
     : !authSignedIn
@@ -106,7 +107,7 @@ export function TodayTab({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Button className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent" : "bg-white text-black"}`} onClick={() => updateState({ soundEnabled: !state.soundEnabled })}>
+            <Button className={`h-14 text-lg font-black border-4 border-black rounded-2xl ${state.soundEnabled ? "today-accent" : "bg-white text-black"}`} onClick={toggleSoundEnabled}>
               {state.soundEnabled ? <Volume2 className="mr-2 h-5 w-5" /> : <VolumeX className="mr-2 h-5 w-5" />} {state.soundEnabled ? "Voice On" : "Voice Off"}
             </Button>
             <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={startSession}>
@@ -129,9 +130,9 @@ export function TodayTab({
             </div>
           )}
 
-          <div className="sync-indicator-row">
-            <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-warning"}`} />
-            <div className="text-sm font-bold">{syncModeLabel}</div>
+          <div className="sync-indicator-row sync-indicator-row-centered">
+            <div className={`sync-indicator-dot ${syncIndicatorClass}`} />
+            <div className="text-sm font-bold text-center">{syncModeLabel}</div>
           </div>
         </CardContent>
       </Card>

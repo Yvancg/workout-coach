@@ -148,7 +148,7 @@ export function SessionTab({
                 <div className="text-6xl font-black">{state.currentRep}</div>
                 <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
                 <div className="rep-guide-actions">
-                  <Button className="h-16 text-base font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={toggleSound}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />} {state.soundEnabled ? "Mute" : "Unmute"}</Button>
+                  <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black rep-guide-action rep-guide-action-icon" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice counting" : "Unmute voice counting"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
                   <Button className="h-16 text-base font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={restartRepGuide}><RotateCcw className="h-5 w-5" /> Reset</Button>
                   <Button className="h-16 text-base font-black border-4 border-black rounded-2xl session-accent text-white rep-guide-action" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
                 </div>

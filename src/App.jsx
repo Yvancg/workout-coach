@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
@@ -74,6 +74,7 @@ function speakWithStyle(text, enabled, selectedVoiceName = "", mode = "default")
 
   const preferredVoice = getPreferredVoice(selectedVoiceName);
 
+  window.speechSynthesis.resume();
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   if (preferredVoice) utterance.voice = preferredVoice;
@@ -218,10 +219,17 @@ export default function App() {
         ]);
         if (historyResult.skipped || whoAmIResult.skipped) return;
         if (cancelled) return;
+        const ownerId = whoAmIResult.data?.userId || authSession?.user?.id || "";
+        const ownerEmail = whoAmIResult.data?.email || authSession?.user?.email || "";
 
         setState((prev) => ({
           ...prev,
-          history: Array.isArray(historyResult.data?.history) ? historyResult.data.history : prev.history,
+          history: [
+            ...(Array.isArray(historyResult.data?.history)
+              ? historyResult.data.history.map((session) => ({ ...session, ownerId, ownerEmail }))
+              : []),
+            ...prev.history.filter((session) => (session.ownerId || session.ownerEmail || "") !== (ownerId || ownerEmail)),
+          ],
         }));
         setSyncIdentityEmail(whoAmIResult.data?.email || "");
         setSyncStatus("Sync connected");
@@ -246,7 +254,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [authSession?.access_token, state.syncApiUrl, setState]);
+  }, [authSession?.access_token, authSession?.user?.email, authSession?.user?.id, state.syncApiUrl, setState]);
+
+  const activeOwnerId = authSession?.user?.id || "";
+  const activeOwnerEmail = authSession?.user?.email || "";
+  const activeOwnerKey = activeOwnerId || activeOwnerEmail;
+  const entryBelongsToActiveUser = useCallback((entry) => {
+    const entryOwnerId = entry?.ownerId || "";
+    const entryOwnerEmail = entry?.ownerEmail || "";
+    if (activeOwnerKey) return entryOwnerId === activeOwnerId || (!entryOwnerId && entryOwnerEmail === activeOwnerEmail);
+    return !entryOwnerId && !entryOwnerEmail;
+  }, [activeOwnerEmail, activeOwnerId, activeOwnerKey]);
 
   useEffect(() => {
     if (state.setTimerRunning && state.setDurationRemaining > 0) {
@@ -342,6 +360,8 @@ export default function App() {
   }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex, setState, state.soundEnabled]);
 
   const exercises = useMemo(() => PROGRAMS[state.activeProgram][state.dayType] || [], [state.activeProgram, state.dayType]);
+  const visibleLogs = useMemo(() => state.logs.filter(entryBelongsToActiveUser), [state.logs, entryBelongsToActiveUser]);
+  const visibleHistory = useMemo(() => state.history.filter(entryBelongsToActiveUser), [state.history, entryBelongsToActiveUser]);
   const currentProgramMeta = useMemo(() => PROGRAMS[state.activeProgram], [state.activeProgram]);
   const currentExercise = state.sessionStage === "exercise" ? exercises[state.exerciseIndex] || null : null;
   const sessionProgress = useMemo(() => {
@@ -356,17 +376,17 @@ export default function App() {
     return 100;
   }, [exercises.length, state.sessionStage, state.exerciseIndex, state.currentSet, currentExercise?.sets]);
   const completedTodaySets = useMemo(
-    () => state.logs.filter((log) => log.date === todayDateLabel()).length,
-    [state.logs],
+    () => visibleLogs.filter((log) => log.date === todayDateLabel()).length,
+    [visibleLogs],
   );
   const nextWorkout = `${state.activeProgram} - Day ${state.dayType}`;
-  const latestSession = state.history[0] || null;
+  const latestSession = visibleHistory[0] || null;
   const activeThemeClass = `${state.activeTab}-theme`;
   const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
   const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
   const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
   const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
-  const sessionSummaries = useMemo(() => summarizeSessionLogs(state.logs, state.history).slice(0, 8), [state.logs, state.history]);
+  const sessionSummaries = useMemo(() => summarizeSessionLogs(visibleLogs, visibleHistory).slice(0, 8), [visibleLogs, visibleHistory]);
   const repGuideLabel = currentExercise?.isTime
     ? ""
     : isAlternateExercise(currentExercise?.name || "")
@@ -386,6 +406,9 @@ export default function App() {
   ];
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
+  const toggleSoundEnabled = () => {
+    setState((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }));
+  };
   const handleVoiceSelection = (voiceName) => {
     updateState({ selectedVoiceName: voiceName });
     speakWithStyle(`Hi there! I am ${voiceName}, your Workout Coach`, true, voiceName, "default");
@@ -561,7 +584,8 @@ export default function App() {
 
   const startSession = () => {
     cancelRepGuideCountdown();
-    const sessionId = `${Date.now()}`;
+    const sessionOwnerKey = activeOwnerId || activeOwnerEmail || "guest";
+    const sessionId = `${sessionOwnerKey}-${Date.now()}`;
     updateState({
       sessionStartedAt: new Date().toISOString(),
       sessionId,
@@ -615,6 +639,8 @@ export default function App() {
       dayType: state.dayType,
       durationMinutes: currentSessionDurationMinutes(),
       setsCompleted: state.logs.filter((x) => x.sessionId === state.sessionId).length,
+      ownerId: activeOwnerId,
+      ownerEmail: activeOwnerEmail,
       note: state.todayNote,
       availableWeights: state.availableWeights,
       warmupCompleted: state.warmupDone,
@@ -622,7 +648,7 @@ export default function App() {
     };
 
     updateState({
-      history: [sessionRecord, ...state.history].slice(0, 50),
+      history: [sessionRecord, ...state.history].slice(0, 200),
       activeTab: "history",
       sessionStage: "idle",
       restRemaining: 0,
@@ -720,6 +746,8 @@ export default function App() {
       rest: restSeconds,
       sessionId: state.sessionId,
       durationMinutes: currentSessionDurationMinutes(),
+      ownerId: activeOwnerId,
+      ownerEmail: activeOwnerEmail,
     };
 
     await saveSetLocally(entry);
@@ -753,7 +781,7 @@ export default function App() {
   };
 
   const exportLogs = () => {
-    const rows = [SHEET_HEADERS, ...state.logs.map((log) => SHEET_HEADERS.map((header) => log[header] ?? ""))];
+    const rows = [SHEET_HEADERS, ...visibleLogs.map((log) => SHEET_HEADERS.map((header) => log[header] ?? ""))];
     downloadCsv(`workout-log-${todayDateLabel()}.csv`, rows);
   };
 
@@ -896,8 +924,8 @@ export default function App() {
             signInWithMagicLink={signInWithMagicLink}
             signOut={signOut}
             updateState={updateState}
+            toggleSoundEnabled={toggleSoundEnabled}
             onVoiceSelect={handleVoiceSelection}
-            syncConnected={syncConnected}
           />
         )}
 
@@ -914,11 +942,11 @@ export default function App() {
             syncConnected={syncConnected}
             syncStatus={displayedSyncStatus}
             formatSeconds={formatSeconds}
-             DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
-             onExerciseImageError={handleExerciseImageError}
-             isAlternateExercise={isAlternateExercise}
-             toggleSound={() => updateState({ soundEnabled: !state.soundEnabled })}
-             startSession={startSession}
+              DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
+              onExerciseImageError={handleExerciseImageError}
+              isAlternateExercise={isAlternateExercise}
+              toggleSound={toggleSoundEnabled}
+              startSession={startSession}
              beginProgramAfterWarmup={beginProgramAfterWarmup}
              toggleRepGuide={toggleRepGuide}
              restartRepGuide={restartRepGuide}

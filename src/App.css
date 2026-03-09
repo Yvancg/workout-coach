@@ -334,6 +334,11 @@
   gap: 0.55rem;
 }
 
+.sync-indicator-row-centered {
+  justify-content: center;
+  text-align: center;
+}
+
 .session-sync-row {
   justify-content: center;
 }
@@ -461,6 +466,12 @@ select {
 }
 
 select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, rgba(49, 32, 24, 0.88) 50%), linear-gradient(135deg, rgba(49, 32, 24, 0.88) 50%, transparent 50%);
+  background-position: calc(100% - 1.35rem) calc(50% - 0.14rem), calc(100% - 0.95rem) calc(50% - 0.14rem);
+  background-size: 0.44rem 0.44rem, 0.44rem 0.44rem;
+  background-repeat: no-repeat;
   padding-right: 3.35rem !important;
 }
 
@@ -497,7 +508,7 @@ select {
 
 .rep-guide-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 4rem minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
   align-items: stretch;
 }
@@ -507,6 +518,12 @@ select {
   padding-left: 0.45rem;
   padding-right: 0.45rem;
   white-space: nowrap;
+}
+
+.rep-guide-action-icon {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
 .ui-input::placeholder {
