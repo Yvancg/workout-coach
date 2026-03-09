@@ -12,11 +12,12 @@
     "cf:dev": "wrangler dev worker/src/index.js",
     "cf:deploy": "wrangler deploy worker/src/index.js",
     "d1:migrate:local": "wrangler d1 migrations apply workout_coach --local",
-    "d1:migrate:remote": "wrangler d1 migrations apply workout_coach",
+    "d1:migrate:remote": "wrangler d1 migrations apply workout_coach --remote",
     "exercise-assets:import": "node scripts/import-exercise-assets.mjs",
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
-    "android": "npm run build && npx cap sync android"
+    "android": "npm run build && npx cap sync android",
+    "android:bundle": "npm run build && npx cap sync android && bash -lc 'cd android && ./gradlew bundleRelease'"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
