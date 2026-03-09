@@ -10,50 +10,57 @@ function pointOnArc(cx, cy, radius, startAngle, endAngle, progress) {
   };
 }
 
-function pointAlongPerimeter(distance, width, height, radius, lengths) {
-  const [, topLength] = lengths;
-  const arc = (Math.PI * radius) / 2;
-  const leftVertical = Math.max(0, height - 2 * radius);
-  const rightVertical = leftVertical;
+function buildPerimeterModel(width, height) {
+  const radius = Math.min(24, width * 0.12, height * 0.16);
+  const arcLength = (Math.PI * radius) / 2;
+  const verticalLength = Math.max(0, height - 2 * radius);
+  const horizontalLength = Math.max(0, width - 2 * radius);
 
-  let remaining = distance;
+  const segments = [
+    {
+      id: "left",
+      length: arcLength + verticalLength + arcLength,
+      path: `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0`,
+      pointAt(progress) {
+        const travel = this.length * progress;
+        if (travel <= arcLength) return pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, travel / arcLength);
+        if (travel <= arcLength + verticalLength) return { x: 0, y: height - radius - (travel - arcLength) };
+        return pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, (travel - arcLength - verticalLength) / arcLength);
+      },
+    },
+    {
+      id: "top",
+      length: horizontalLength,
+      path: `M ${radius} 0 L ${width - radius} 0`,
+      pointAt(progress) {
+        return { x: radius + horizontalLength * progress, y: 0 };
+      },
+    },
+    {
+      id: "right",
+      length: arcLength + verticalLength + arcLength,
+      path: `M ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height}`,
+      pointAt(progress) {
+        const travel = this.length * progress;
+        if (travel <= arcLength) return pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, travel / arcLength);
+        if (travel <= arcLength + verticalLength) return { x: width, y: radius + (travel - arcLength) };
+        return pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, (travel - arcLength - verticalLength) / arcLength);
+      },
+    },
+    {
+      id: "bottom",
+      length: horizontalLength,
+      path: `M ${width - radius} ${height} L ${radius} ${height}`,
+      pointAt(progress) {
+        return { x: width - radius - horizontalLength * progress, y: height };
+      },
+    },
+  ];
 
-  if (remaining <= arc) {
-    return pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= leftVertical) {
-    return { x: 0, y: height - radius - remaining };
-  }
-  remaining -= leftVertical;
-
-  if (remaining <= arc) {
-    return pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= topLength) {
-    return { x: radius + remaining, y: 0 };
-  }
-  remaining -= topLength;
-
-  if (remaining <= arc) {
-    return pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= rightVertical) {
-    return { x: width, y: radius + remaining };
-  }
-  remaining -= rightVertical;
-
-  if (remaining <= arc) {
-    return pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  return { x: width - radius - remaining, y: height };
+  return {
+    totalLength: segments.reduce((sum, segment) => sum + segment.length, 0),
+    segments,
+  };
 }
 
 function PerimeterProgressFrame({ borderProgress, className, children }) {
@@ -77,48 +84,29 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
 
-    const inset = 0;
-    const innerWidth = Math.max(0, width - inset * 2);
-    const innerHeight = Math.max(0, height - inset * 2);
-    const radius = Math.min(24, innerWidth * 0.12, innerHeight * 0.16);
-    const arc = (Math.PI * radius) / 2;
-    const leftLength = Math.max(0, innerHeight - 2 * radius) + arc * 2;
-    const topLength = Math.max(0, innerWidth - 2 * radius);
-    const rightLength = Math.max(0, innerHeight - 2 * radius) + arc * 2;
-    const bottomLength = Math.max(0, innerWidth - 2 * radius);
-    const lengths = [leftLength, topLength, rightLength, bottomLength];
-    const totalLength = lengths.reduce((sum, value) => sum + value, 0);
-
+    const { totalLength, segments } = buildPerimeterModel(width, height);
     const segmentProgress = borderProgress.segmentProgress || (() => {
-      const total = lengths.reduce((sum, value) => sum + value, 0);
-      let remaining = total * (borderProgress.progress || 0);
-      return lengths.map((length) => {
-        const fill = Math.max(0, Math.min(1, remaining / length));
-        remaining -= length;
+      let remaining = totalLength * (borderProgress.progress || 0);
+      return segments.map((segment) => {
+        const fill = Math.max(0, Math.min(1, remaining / segment.length));
+        remaining -= segment.length;
         return fill;
       });
     })();
-    const logicalStrokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
-    const rawDotPoint = logicalStrokeLength > 0 ? pointAlongPerimeter(Math.min(logicalStrokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
-    const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
 
-    let measuredTotalLength = totalLength;
-    let measuredStrokeLength = logicalStrokeLength;
-    let dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
+    const activeSegmentIndex = Math.max(
+      0,
+      Math.min(
+        segments.length - 1,
+        segmentProgress.findIndex((value) => value > 0 && value < 1) === -1
+          ? segmentProgress.findLastIndex((value) => value > 0)
+          : segmentProgress.findIndex((value) => value > 0 && value < 1),
+      ),
+    );
 
-    if (typeof document !== "undefined") {
-      const metricsPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      metricsPath.setAttribute("d", path);
-      const normalizedProgress = totalLength > 0 ? logicalStrokeLength / totalLength : 0;
-      measuredTotalLength = metricsPath.getTotalLength();
-      measuredStrokeLength = Math.min(measuredTotalLength, measuredTotalLength * normalizedProgress);
-      if (measuredStrokeLength > 0) {
-        const point = metricsPath.getPointAtLength(measuredStrokeLength);
-        dotPoint = { x: point.x, y: point.y };
-      } else {
-        dotPoint = null;
-      }
-    }
+    const dotPoint = segmentProgress.some((value) => value > 0)
+      ? segments[activeSegmentIndex].pointAt(Math.max(0, Math.min(1, segmentProgress[activeSegmentIndex] || 0)))
+      : null;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -131,12 +119,20 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
             </feMerge>
           </filter>
         </defs>
-        <path
-          d={path}
-          className="perimeter-progress-stroke"
-          strokeDasharray={`${measuredStrokeLength} ${measuredTotalLength}`}
-        />
-        {dotPoint && measuredStrokeLength > 0 && (
+        {segments.map((segment, index) => {
+          const progress = Math.max(0, Math.min(1, segmentProgress[index] || 0));
+          if (progress <= 0) return null;
+          return (
+            <path
+              key={segment.id}
+              d={segment.path}
+              pathLength={segment.length}
+              className="perimeter-progress-stroke"
+              strokeDasharray={`${segment.length * progress} ${segment.length}`}
+            />
+          );
+        })}
+        {dotPoint && (
           <g filter="url(#perimeter-dot-glow)">
             <circle cx={dotPoint.x} cy={dotPoint.y} r="6.5" className="perimeter-progress-dot-glow" />
             <circle cx={dotPoint.x} cy={dotPoint.y} r="4.5" className="perimeter-progress-dot" />
