@@ -247,6 +247,8 @@ export function getPhaseCue(phase, seed = 0) {
   if (phase === "Up") return "up";
   if (phase === "Hold") return "hold";
   if (phase === "Down") return "down";
+  if (phase === "2") return "2";
+  if (phase === "3") return "3";
   return phase;
 }
 

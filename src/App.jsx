@@ -510,11 +510,17 @@ export default function App() {
     const phaseDurationMs = (REP_PHASE_DURATIONS[state.repGuidePhaseIndex] || 1) * 1000;
     const elapsedMs = repGuideVisualElapsedMs;
     const phaseProgress = Math.min(1, phaseDurationMs > 0 ? elapsedMs / phaseDurationMs : 0);
-    const segmentProgress = REP_PHASES.map((_, index) => {
+    const phaseProgresses = REP_PHASES.map((_, index) => {
       if (index < state.repGuidePhaseIndex) return 1;
       if (index === state.repGuidePhaseIndex) return phaseProgress;
       return 0;
     });
+    const segmentProgress = [
+      (phaseProgresses[0] + phaseProgresses[1]) / 2,
+      (phaseProgresses[2] + phaseProgresses[3]) / 2,
+      (phaseProgresses[4] + phaseProgresses[5] + phaseProgresses[6]) / 3,
+      phaseProgresses[7],
+    ];
     return {
       active: state.repGuideRunning || repGuideVisualElapsedMs > 0,
       segmentProgress,

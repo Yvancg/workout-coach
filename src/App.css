@@ -538,7 +538,7 @@ select {
 
 .perimeter-progress-frame {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .perimeter-progress-content {

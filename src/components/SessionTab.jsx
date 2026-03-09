@@ -77,12 +77,15 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
 
-    const radius = Math.min(24, width * 0.12, height * 0.16);
+    const inset = 8;
+    const innerWidth = Math.max(0, width - inset * 2);
+    const innerHeight = Math.max(0, height - inset * 2);
+    const radius = Math.min(24, innerWidth * 0.12, innerHeight * 0.16);
     const arc = (Math.PI * radius) / 2;
-    const leftLength = Math.max(0, height - 2 * radius) + arc * 2;
-    const topLength = Math.max(0, width - 2 * radius);
-    const rightLength = Math.max(0, height - 2 * radius) + arc * 2;
-    const bottomLength = Math.max(0, width - 2 * radius);
+    const leftLength = Math.max(0, innerHeight - 2 * radius) + arc * 2;
+    const topLength = Math.max(0, innerWidth - 2 * radius);
+    const rightLength = Math.max(0, innerHeight - 2 * radius) + arc * 2;
+    const bottomLength = Math.max(0, innerWidth - 2 * radius);
     const lengths = [leftLength, topLength, rightLength, bottomLength];
     const totalLength = lengths.reduce((sum, value) => sum + value, 0);
 
@@ -96,8 +99,9 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
       });
     })();
     const strokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
-    const path = `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0 L ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height} L ${radius} ${height}`;
-    const dotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), width, height, radius, lengths) : null;
+    const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
+    const rawDotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
+    const dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
