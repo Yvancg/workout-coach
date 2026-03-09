@@ -13,7 +13,7 @@ export function TodayTab({
   nextWorkout,
   completedTodaySets,
   latestSession,
-  availableFemaleVoices,
+  availableVoices,
   installApp,
   setAuthEmail,
   startSession,
@@ -111,11 +111,11 @@ export function TodayTab({
               {state.soundEnabled ? <Volume2 className="mr-2 h-5 w-5" /> : <VolumeX className="mr-2 h-5 w-5" />} {state.soundEnabled ? "Voice On" : "Voice Off"}
             </Button>
             <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={startSession}>
-              <Play className="mr-2 h-5 w-5" /> Start Session
+              <Play className="mr-2 h-5 w-5" /> Workout
             </Button>
           </div>
 
-          {availableFemaleVoices.length > 0 && (
+          {availableVoices.length > 0 && (
             <div>
               <label className="block text-sm font-black mb-1">Voice</label>
               <select
@@ -123,11 +123,14 @@ export function TodayTab({
                 value={state.selectedVoiceName}
                 onChange={(e) => onVoiceSelect(e.target.value)}
               >
-                {availableFemaleVoices.map((voice) => (
+                {availableVoices.map((voice) => (
                   <option key={voice.voiceURI || voice.name} value={voice.name}>{voice.name}</option>
                 ))}
               </select>
             </div>
+          )}
+          {availableVoices.length === 0 && (
+            <div className="text-xs font-semibold">No selectable system voices found on this device.</div>
           )}
 
           <div className="sync-indicator-row sync-indicator-row-centered">

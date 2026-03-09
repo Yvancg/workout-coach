@@ -164,7 +164,7 @@ export function SessionTab({
               </div>
             )}
 
-            <Button className="w-full h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>
+            <Button className="w-full h-16 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>
 
              <div className="border-4 border-black rounded-3xl p-4 text-center space-y-2">
                  <div className="text-sm font-black">Rest timer</div>

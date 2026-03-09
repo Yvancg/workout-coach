@@ -1,6 +1,6 @@
 {
   "name": "Workout Coach",
-  "short_name": "Workout Coach",
+  "short_name": "W/O Coach",
   "description": "Minimal workout tracking with timers, history, and offline support.",
   "start_url": "/",
   "display": "standalone",

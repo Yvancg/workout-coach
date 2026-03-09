@@ -48,10 +48,18 @@ function getFemaleVoices() {
   ));
 }
 
+function getAvailableVoices() {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
+
+  const englishVoices = window.speechSynthesis.getVoices().filter((voice) => /en-/i.test(voice.lang));
+  const preferredVoices = getFemaleVoices();
+  return preferredVoices.length ? preferredVoices : englishVoices;
+}
+
 function getPreferredVoice(selectedVoiceName = "") {
-  const femaleVoices = getFemaleVoices();
+  const availableVoices = getAvailableVoices();
   if (selectedVoiceName) {
-    const selectedVoice = femaleVoices.find((voice) => voice.name === selectedVoiceName);
+    const selectedVoice = availableVoices.find((voice) => voice.name === selectedVoiceName);
     if (selectedVoice) return selectedVoice;
   }
 
@@ -61,10 +69,10 @@ function getPreferredVoice(selectedVoiceName = "") {
   ];
 
   return voiceMatchers
-    .map((matcher) => femaleVoices.find((voice) => matcher.test(voice.name)))
+    .map((matcher) => availableVoices.find((voice) => matcher.test(voice.name)))
     .find(Boolean)
-    || femaleVoices.find((voice) => !voice.localService)
-    || femaleVoices[0]
+    || availableVoices.find((voice) => !voice.localService)
+    || availableVoices[0]
     || null;
 }
 
@@ -139,7 +147,7 @@ async function runHaptic(type = "light") {
 
 export default function App() {
   const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
-  const [availableFemaleVoices, setAvailableFemaleVoices] = useState([]);
+  const [availableVoices, setAvailableVoices] = useState([]);
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [authEmail, setAuthEmail] = useState("");
   const [authStatus, setAuthStatus] = useState("");
@@ -160,8 +168,8 @@ export default function App() {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return undefined;
 
     const syncVoices = () => {
-      const voices = getFemaleVoices();
-      setAvailableFemaleVoices(voices);
+      const voices = getAvailableVoices();
+      setAvailableVoices(voices);
       if (!voices.length) return;
       if (!state.selectedVoiceName || !voices.some((voice) => voice.name === state.selectedVoiceName)) {
         const fallbackVoice = getPreferredVoice("");
@@ -443,12 +451,10 @@ export default function App() {
       setRepGuideCountdown(step);
       setState((prev) => ({ ...prev, repGuidePhaseRemaining: step }));
       await playCountdownBeep(countdownAudioContextRef);
-      if (step > 1) {
-        await new Promise((resolve) => {
-          const timeoutId = setTimeout(resolve, 1000);
-          repGuideCountdownTimeoutsRef.current.push(timeoutId);
-        });
-      }
+      await new Promise((resolve) => {
+        const timeoutId = setTimeout(resolve, 1000);
+        repGuideCountdownTimeoutsRef.current.push(timeoutId);
+      });
       if (!repGuideStartPendingRef.current) return;
     }
 
@@ -916,7 +922,7 @@ export default function App() {
             nextWorkout={nextWorkout}
             completedTodaySets={completedTodaySets}
             latestSession={latestSession}
-            availableFemaleVoices={availableFemaleVoices}
+            availableVoices={availableVoices}
             installApp={installApp}
             setAuthEmail={setAuthEmail}
             startSession={startSession}

@@ -58,8 +58,8 @@ export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistory
         </CardHeader>
         <CardContent className="card-block-body space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl history-accent text-white" onClick={exportLogs}><Download className="mr-2 h-5 w-5" /> Export Local CSV</Button>
-            <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}><RotateCcw className="mr-2 h-5 w-5" /> Reset Session</Button>
+            <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl history-accent text-white" onClick={exportLogs}><Download className="mr-2 h-5 w-5" /> Export CSV</Button>
+            <Button className="h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSession}><RotateCcw className="mr-2 h-5 w-5" /> Reset</Button>
           </div>
           <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl bg-white text-black" onClick={clearAllData}>Clear All Local Data</Button>
           <div className="text-sm font-bold">Export downloads the raw set log saved on this device. On-screen history can also include grouped Cloudflare session summaries.</div>
