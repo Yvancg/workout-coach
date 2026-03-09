@@ -98,10 +98,27 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
         return fill;
       });
     })();
-    const strokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
-    const rawDotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
-    const dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
+    const logicalStrokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
+    const rawDotPoint = logicalStrokeLength > 0 ? pointAlongPerimeter(Math.min(logicalStrokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
     const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
+
+    let measuredTotalLength = totalLength;
+    let measuredStrokeLength = logicalStrokeLength;
+    let dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
+
+    if (typeof document !== "undefined") {
+      const metricsPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      metricsPath.setAttribute("d", path);
+      const normalizedProgress = totalLength > 0 ? logicalStrokeLength / totalLength : 0;
+      measuredTotalLength = metricsPath.getTotalLength();
+      measuredStrokeLength = Math.min(measuredTotalLength, measuredTotalLength * normalizedProgress);
+      if (measuredStrokeLength > 0) {
+        const point = metricsPath.getPointAtLength(measuredStrokeLength);
+        dotPoint = { x: point.x, y: point.y };
+      } else {
+        dotPoint = null;
+      }
+    }
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -116,11 +133,10 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
         </defs>
         <path
           d={path}
-          pathLength={totalLength}
           className="perimeter-progress-stroke"
-          strokeDasharray={`${strokeLength} ${totalLength}`}
+          strokeDasharray={`${measuredStrokeLength} ${measuredTotalLength}`}
         />
-        {dotPoint && strokeLength > 0 && (
+        {dotPoint && measuredStrokeLength > 0 && (
           <g filter="url(#perimeter-dot-glow)">
             <circle cx={dotPoint.x} cy={dotPoint.y} r="6.5" className="perimeter-progress-dot-glow" />
             <circle cx={dotPoint.x} cy={dotPoint.y} r="4.5" className="perimeter-progress-dot" />
