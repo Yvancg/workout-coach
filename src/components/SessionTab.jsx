@@ -1,5 +1,95 @@
 import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, RotateCcw, Save, TimerReset, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
+
+function PerimeterProgressFrame({ borderProgress, className, children }) {
+  const frameRef = useRef(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!frameRef.current || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      setSize({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+    observer.observe(frameRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const overlay = useMemo(() => {
+    const width = size.width;
+    const height = size.height;
+    if (!width || !height || !borderProgress?.active) return null;
+
+    const radius = Math.min(24, width * 0.12, height * 0.16);
+    const arc = (Math.PI * radius) / 2;
+    const leftLength = Math.max(0, height - 2 * radius) + arc * 2;
+    const topLength = Math.max(0, width - 2 * radius);
+    const rightLength = Math.max(0, height - 2 * radius) + arc * 2;
+    const bottomLength = Math.max(0, width - 2 * radius);
+    const lengths = [leftLength, topLength, rightLength, bottomLength];
+
+    const segmentProgress = borderProgress.segmentProgress || (() => {
+      const total = lengths.reduce((sum, value) => sum + value, 0);
+      let remaining = total * (borderProgress.progress || 0);
+      return lengths.map((length) => {
+        const fill = Math.max(0, Math.min(1, remaining / length));
+        remaining -= length;
+        return fill;
+      });
+    })();
+
+    const paths = [
+      `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0`,
+      `M ${radius} 0 L ${width - radius} 0`,
+      `M ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height}`,
+      `M ${width - radius} ${height} L ${radius} ${height}`,
+    ];
+
+    return (
+      <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <filter id="perimeter-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {paths.map((path, index) => {
+          const progress = Math.max(0, Math.min(1, segmentProgress[index] || 0));
+          if (progress <= 0) return null;
+          return (
+            <g key={path}>
+              <path
+                d={path}
+                pathLength={lengths[index]}
+                className="perimeter-progress-glow"
+                strokeDasharray={`${lengths[index] * progress} ${lengths[index]}`}
+              />
+              <path
+                d={path}
+                pathLength={lengths[index]}
+                className="perimeter-progress-stroke"
+                strokeDasharray={`${lengths[index] * progress} ${lengths[index]}`}
+              />
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }, [borderProgress, size.height, size.width]);
+
+  return (
+    <div ref={frameRef} className={`perimeter-progress-frame ${className}`}>
+      {overlay}
+      <div className="perimeter-progress-content">{children}</div>
+    </div>
+  );
+}
 
 export function SessionTab({
   state,
@@ -10,6 +100,8 @@ export function SessionTab({
   currentExerciseImage,
   repGuideLabel,
   repGuideCountdown,
+  repGuideBorderProgress,
+  setTimerBorderProgress,
   syncConnected,
   syncStatus,
   formatSeconds,
@@ -143,7 +235,7 @@ export function SessionTab({
             </div>
 
             {!currentExercise.isTime ? (
-              <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
+              <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
                 <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
@@ -152,16 +244,16 @@ export function SessionTab({
                   <Button className="h-16 text-lg font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={restartRepGuide}><RotateCcw className="h-5 w-5" /> Reset</Button>
                   <Button className="h-16 text-lg font-black border-4 border-black rounded-2xl session-accent text-white rep-guide-action" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
                 </div>
-              </div>
+              </PerimeterProgressFrame>
             ) : (
-              <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
+              <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card">
                 <div className="text-sm font-black">Set timer</div>
                 <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
                 <div className="grid grid-cols-2 gap-3">
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>{state.setTimerRunning ? <Pause className="mr-2 h-5 w-5" /> : <Clock3 className="mr-2 h-5 w-5" />} {state.setTimerRunning ? "Pause" : "Start"}</Button>
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSetTimer}><RotateCcw className="mr-2 h-5 w-5" /> Reset</Button>
                 </div>
-              </div>
+              </PerimeterProgressFrame>
             )}
 
             <Button className="w-full h-16 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>

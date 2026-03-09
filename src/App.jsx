@@ -128,6 +128,10 @@ async function playCountdownBeep(audioContextRef, beep = 880, duration = 0.12) {
   };
 }
 
+function deferStateUpdate(callback) {
+  queueMicrotask(callback);
+}
+
 async function runHaptic(type = "light") {
   try {
     if (type === "success") {
@@ -149,6 +153,8 @@ export default function App() {
   const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
+  const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
+  const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
   const [authEmail, setAuthEmail] = useState("");
   const [authStatus, setAuthStatus] = useState("");
   const [authSession, setAuthSession] = useState(null);
@@ -163,6 +169,12 @@ export default function App() {
   const repGuideCountdownTimeoutsRef = useRef([]);
   const countdownAudioContextRef = useRef(null);
   const repGuideStartPendingRef = useRef(false);
+  const repGuidePhaseStartedAtRef = useRef(0);
+  const repGuidePhasePausedElapsedRef = useRef(0);
+  const repGuidePrevStateRef = useRef({ running: false, phaseIndex: 0, side: "left", rep: 0, exerciseName: "" });
+  const setTimerStartedAtRef = useRef(0);
+  const setTimerPausedElapsedRef = useRef(0);
+  const setTimerPrevStateRef = useRef({ running: false, remaining: 0, exerciseName: "" });
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return undefined;
@@ -367,6 +379,104 @@ export default function App() {
     return () => clearTimeout(repGuideRef.current);
   }, [state.repGuideRunning, state.repGuidePhaseRemaining, state.repGuidePhaseIndex, state.sessionStage, state.activeProgram, state.dayType, state.exerciseIndex, setState, state.soundEnabled]);
 
+  useEffect(() => {
+    const exerciseName = PROGRAMS[state.activeProgram][state.dayType]?.[state.exerciseIndex]?.name || "";
+    const activeExercise = PROGRAMS[state.activeProgram][state.dayType]?.[state.exerciseIndex];
+    const prev = repGuidePrevStateRef.current;
+
+    if (!activeExercise || activeExercise.isTime || state.sessionStage !== "exercise") {
+      repGuidePhaseStartedAtRef.current = 0;
+      repGuidePhasePausedElapsedRef.current = 0;
+      deferStateUpdate(() => setRepGuideVisualElapsedMs(0));
+      repGuidePrevStateRef.current = { running: false, phaseIndex: 0, side: "left", rep: 0, exerciseName };
+      return;
+    }
+
+    const now = performance.now();
+    const phaseChanged = prev.phaseIndex !== state.repGuidePhaseIndex || prev.side !== state.repGuideSide || prev.rep !== state.currentRep || prev.exerciseName !== exerciseName;
+
+    if (state.repGuideRunning && (!prev.running || phaseChanged)) {
+      repGuidePhaseStartedAtRef.current = now;
+      repGuidePhasePausedElapsedRef.current = 0;
+      deferStateUpdate(() => setRepGuideVisualElapsedMs(0));
+    } else if (!state.repGuideRunning && prev.running) {
+      repGuidePhasePausedElapsedRef.current = Math.max(0, now - repGuidePhaseStartedAtRef.current);
+      deferStateUpdate(() => setRepGuideVisualElapsedMs(repGuidePhasePausedElapsedRef.current));
+    }
+
+    repGuidePrevStateRef.current = {
+      running: state.repGuideRunning,
+      phaseIndex: state.repGuidePhaseIndex,
+      side: state.repGuideSide,
+      rep: state.currentRep,
+      exerciseName,
+    };
+  }, [state.activeProgram, state.currentRep, state.dayType, state.exerciseIndex, state.repGuidePhaseIndex, state.repGuideRunning, state.repGuideSide, state.sessionStage]);
+
+  useEffect(() => {
+    const activeExercise = PROGRAMS[state.activeProgram][state.dayType]?.[state.exerciseIndex];
+    const exerciseName = activeExercise?.name || "";
+    const prev = setTimerPrevStateRef.current;
+
+    if (!activeExercise?.isTime || state.sessionStage !== "exercise") {
+      setTimerStartedAtRef.current = 0;
+      setTimerPausedElapsedRef.current = 0;
+      deferStateUpdate(() => setSetTimerVisualElapsedMs(0));
+      setTimerPrevStateRef.current = { running: false, remaining: 0, exerciseName };
+      return;
+    }
+
+    const now = performance.now();
+    const targetMs = activeExercise.reps * 1000;
+    const elapsedFromRemaining = Math.max(0, targetMs - (state.setDurationRemaining || activeExercise.reps) * 1000);
+
+    if (prev.exerciseName !== exerciseName || (!state.setTimerRunning && state.setDurationRemaining === activeExercise.reps)) {
+      setTimerStartedAtRef.current = 0;
+      setTimerPausedElapsedRef.current = 0;
+      deferStateUpdate(() => setSetTimerVisualElapsedMs(0));
+    }
+
+    if (state.setTimerRunning && !prev.running) {
+      setTimerPausedElapsedRef.current = elapsedFromRemaining;
+      setTimerStartedAtRef.current = now - elapsedFromRemaining;
+      deferStateUpdate(() => setSetTimerVisualElapsedMs(elapsedFromRemaining));
+    } else if (!state.setTimerRunning && prev.running) {
+      setTimerPausedElapsedRef.current = Math.max(0, now - setTimerStartedAtRef.current);
+      deferStateUpdate(() => setSetTimerVisualElapsedMs(setTimerPausedElapsedRef.current));
+    }
+
+    if (!state.setTimerRunning && state.setDurationRemaining === 0) {
+      setTimerPausedElapsedRef.current = targetMs;
+      deferStateUpdate(() => setSetTimerVisualElapsedMs(targetMs));
+    }
+
+    setTimerPrevStateRef.current = {
+      running: state.setTimerRunning,
+      remaining: state.setDurationRemaining,
+      exerciseName,
+    };
+  }, [state.activeProgram, state.dayType, state.exerciseIndex, state.sessionStage, state.setDurationRemaining, state.setTimerRunning]);
+
+  useEffect(() => {
+    const activeExercise = PROGRAMS[state.activeProgram][state.dayType]?.[state.exerciseIndex];
+    const shouldAnimate = (state.repGuideRunning && state.sessionStage === "exercise" && activeExercise && !activeExercise.isTime)
+      || (state.setTimerRunning && state.sessionStage === "exercise" && activeExercise?.isTime);
+    if (!shouldAnimate) return undefined;
+
+    let frameId = 0;
+    const tick = (now) => {
+      if (state.repGuideRunning) {
+        setRepGuideVisualElapsedMs(Math.max(0, now - repGuidePhaseStartedAtRef.current));
+      }
+      if (state.setTimerRunning) {
+        setSetTimerVisualElapsedMs(Math.max(0, now - setTimerStartedAtRef.current));
+      }
+      frameId = requestAnimationFrame(tick);
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [state.activeProgram, state.dayType, state.exerciseIndex, state.repGuideRunning, state.sessionStage, state.setTimerRunning]);
+
   const exercises = useMemo(() => PROGRAMS[state.activeProgram][state.dayType] || [], [state.activeProgram, state.dayType]);
   const visibleLogs = useMemo(() => state.logs.filter(entryBelongsToActiveUser), [state.logs, entryBelongsToActiveUser]);
   const visibleHistory = useMemo(() => state.history.filter(entryBelongsToActiveUser), [state.history, entryBelongsToActiveUser]);
@@ -395,6 +505,30 @@ export default function App() {
   const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
   const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(visibleLogs, visibleHistory).slice(0, 8), [visibleLogs, visibleHistory]);
+  const repGuideBorderProgress = useMemo(() => {
+    if (!currentExercise || currentExercise.isTime || state.sessionStage !== "exercise") return null;
+    const phaseDurationMs = (REP_PHASE_DURATIONS[state.repGuidePhaseIndex] || 1) * 1000;
+    const elapsedMs = repGuideVisualElapsedMs;
+    const phaseProgress = Math.min(1, phaseDurationMs > 0 ? elapsedMs / phaseDurationMs : 0);
+    const segmentProgress = REP_PHASES.map((_, index) => {
+      if (index < state.repGuidePhaseIndex) return 1;
+      if (index === state.repGuidePhaseIndex) return phaseProgress;
+      return 0;
+    });
+    return {
+      active: state.repGuideRunning || repGuideVisualElapsedMs > 0,
+      segmentProgress,
+    };
+  }, [currentExercise, repGuideVisualElapsedMs, state.repGuidePhaseIndex, state.repGuideRunning, state.sessionStage]);
+  const setTimerBorderProgress = useMemo(() => {
+    if (!currentExercise?.isTime || state.sessionStage !== "exercise") return null;
+    const totalMs = currentExercise.reps * 1000;
+    const elapsedMs = setTimerVisualElapsedMs;
+    return {
+      active: state.setTimerRunning || setTimerVisualElapsedMs > 0,
+      progress: Math.min(1, totalMs > 0 ? elapsedMs / totalMs : 0),
+    };
+  }, [currentExercise, setTimerVisualElapsedMs, state.sessionStage, state.setTimerRunning]);
   const repGuideLabel = currentExercise?.isTime
     ? ""
     : isAlternateExercise(currentExercise?.name || "")
@@ -426,6 +560,9 @@ export default function App() {
     setRepGuideCountdown(0);
     repGuideCountdownTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
     repGuideCountdownTimeoutsRef.current = [];
+    repGuidePhaseStartedAtRef.current = 0;
+    repGuidePhasePausedElapsedRef.current = 0;
+    setRepGuideVisualElapsedMs(0);
   };
   const resetRestTimer = () => {
     setState((prev) => (prev.restTimerRunning || prev.restRemaining > 0
@@ -945,6 +1082,8 @@ export default function App() {
             currentExerciseImage={currentExerciseImage}
             repGuideLabel={repGuideLabel}
             repGuideCountdown={repGuideCountdown}
+            repGuideBorderProgress={repGuideBorderProgress}
+            setTimerBorderProgress={setTimerBorderProgress}
             syncConnected={syncConnected}
             syncStatus={displayedSyncStatus}
             formatSeconds={formatSeconds}
