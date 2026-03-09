@@ -578,7 +578,7 @@ select {
 
 .perimeter-progress-stroke {
   fill: none;
-  stroke-linecap: round;
+  stroke-linecap: butt;
   stroke-linejoin: round;
 }
 
