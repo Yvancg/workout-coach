@@ -3,7 +3,7 @@
 React/Vite workout app with:
 - mobile-first session flow
 - installable PWA + Capacitor Android shell
-- optional Cloudflare Worker + D1 sync
+- optional Worker + D1 sync
 
 ## Local App Dev
 
@@ -150,12 +150,13 @@ Deploy the Worker:
 npm run cf:deploy
 ```
 
-Then either:
+Then set:
 
-- paste the deployed Worker base URL into the app's `Cloudflare sync API URL` field, or
-- set `VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev`
+```bash
+VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
+```
 
-If you prefer not to hardcode the Worker URL in a build, you can still leave `VITE_SYNC_API_URL` unset and paste the URL into the in-app sync API URL field on the device.
+If you prefer not to hardcode the Worker URL in a build, you can leave `VITE_SYNC_API_URL` unset and the app will stay local-only until you provide a sync endpoint in your own build.
 
 ## Android Release
 
