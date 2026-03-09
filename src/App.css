@@ -528,12 +528,17 @@ select {
 }
 
 .rep-guide-progress-card {
+  display: grid;
+  grid-template-rows: auto minmax(4.75rem, auto) 1.35rem auto;
+  align-items: start;
+  row-gap: 0.75rem;
   padding-top: 1.25rem;
   padding-bottom: 1.25rem;
 }
 
-.rep-guide-progress-card .rep-guide-actions {
-  margin-top: 1.25rem;
+.rep-guide-title,
+.rep-guide-value {
+  margin: 0;
 }
 
 .rep-guide-status-line {
@@ -541,6 +546,10 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.rep-guide-actions-timer {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .perimeter-progress-frame {

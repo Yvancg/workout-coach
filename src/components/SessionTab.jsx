@@ -289,9 +289,9 @@ export function SessionTab({
             </div>
 
             {!currentExercise.isTime ? (
-              <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card rep-guide-progress-card">
-                <div className="text-sm font-black">Voice-guided rep count</div>
-                <div className="text-6xl font-black">{state.currentRep}</div>
+              <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center perimeter-progress-card rep-guide-progress-card">
+                <div className="text-sm font-black rep-guide-title">Voice-guided rep count</div>
+                <div className="text-6xl font-black rep-guide-value">{state.currentRep}</div>
                 <div className="text-sm font-bold rep-guide-status-line">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
                 <div className="rep-guide-actions">
                   <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black rep-guide-action rep-guide-action-icon" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice counting" : "Unmute voice counting"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
@@ -300,10 +300,11 @@ export function SessionTab({
                 </div>
               </PerimeterProgressFrame>
             ) : (
-              <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card rep-guide-progress-card">
-                <div className="text-sm font-black">Set timer</div>
-                <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
-                <div className="grid grid-cols-2 gap-3">
+              <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center perimeter-progress-card rep-guide-progress-card">
+                <div className="text-sm font-black rep-guide-title">Set timer</div>
+                <div className="text-6xl font-black rep-guide-value">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
+                <div className="rep-guide-status-line" />
+                <div className="grid grid-cols-2 gap-3 rep-guide-actions rep-guide-actions-timer">
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>{state.setTimerRunning ? <Pause className="mr-2 h-5 w-5" /> : <Clock3 className="mr-2 h-5 w-5" />} {state.setTimerRunning ? "Pause" : "Start"}</Button>
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={resetSetTimer}><RotateCcw className="mr-2 h-5 w-5" /> Reset</Button>
                 </div>
