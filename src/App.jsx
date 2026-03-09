@@ -527,6 +527,23 @@ export default function App() {
     setAuthStatus(error ? error.message : `Magic link sent to ${authEmail.trim()}.`);
   };
 
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      setAuthStatus("Supabase auth is not configured.");
+      return;
+    }
+
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    if (error) {
+      setAuthStatus(error.message);
+    }
+  };
+
   const signOut = async () => {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
@@ -872,6 +889,7 @@ export default function App() {
             installApp={installApp}
             setAuthEmail={setAuthEmail}
             startSession={startSession}
+            signInWithGoogle={signInWithGoogle}
             signInWithMagicLink={signInWithMagicLink}
             signOut={signOut}
             updateState={updateState}

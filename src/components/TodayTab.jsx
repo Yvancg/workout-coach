@@ -18,6 +18,7 @@ export function TodayTab({
   installApp,
   setAuthEmail,
   startSession,
+  signInWithGoogle,
   signInWithMagicLink,
   signOut,
   updateState,
@@ -82,13 +83,15 @@ export function TodayTab({
           <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel space-y-2">
             <div>
               <div className="text-sm font-black">Supabase login</div>
-              <div className="text-xs font-semibold">Use magic-link login so sync requests can send your personal session token to the Worker.</div>
+              <div className="text-xs font-semibold">Sign in with Google or email magic link so sync requests can send your personal session token to the Worker.</div>
             </div>
             {!authConfigured && <div className="text-xs font-bold">Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to enable login.</div>}
             {authConfigured && !authUserEmail && (
               <div className="space-y-2">
+                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signInWithGoogle}>Sign in with Google</Button>
+                <div className="text-xs font-bold text-center">or</div>
                 <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="email" autoComplete="email" placeholder="you@example.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Email me a login link</Button>
+                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Sign in with email link</Button>
                 <div className="text-xs font-semibold">You can still train and save locally while signed out. Login only unlocks cross-device sync.</div>
               </div>
             )}
