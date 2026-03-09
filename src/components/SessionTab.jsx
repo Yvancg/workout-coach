@@ -77,6 +77,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
 
+    const bleed = 18;
     const inset = 8;
     const innerWidth = Math.max(0, width - inset * 2);
     const innerHeight = Math.max(0, height - inset * 2);
@@ -104,7 +105,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
 
     return (
-      <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
+      <svg className="perimeter-progress-svg" viewBox={`${-bleed} ${-bleed} ${width + bleed * 2} ${height + bleed * 2}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <filter id="perimeter-dot-glow" x="-200%" y="-200%" width="400%" height="400%">
             <feGaussianBlur stdDeviation="3.2" result="blur" />
@@ -291,7 +292,7 @@ export function SessionTab({
               <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card rep-guide-progress-card">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
-                <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
+                <div className="text-sm font-bold rep-guide-status-line">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
                 <div className="rep-guide-actions">
                   <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black rep-guide-action rep-guide-action-icon" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice counting" : "Unmute voice counting"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
                   <Button className="h-16 text-lg font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={restartRepGuide}><RotateCcw className="h-5 w-5" /> Reset</Button>

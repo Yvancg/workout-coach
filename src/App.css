@@ -530,10 +530,18 @@ select {
 .rep-guide-progress-card {
   padding-top: 1.25rem;
   padding-bottom: 1.25rem;
+  min-height: 18.5rem;
 }
 
 .rep-guide-progress-card .rep-guide-actions {
   margin-top: 1.25rem;
+}
+
+.rep-guide-status-line {
+  min-height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .perimeter-progress-frame {
@@ -548,9 +556,9 @@ select {
 
 .perimeter-progress-svg {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: -18px;
+  width: calc(100% + 36px);
+  height: calc(100% + 36px);
   pointer-events: none;
   overflow: visible;
 }
