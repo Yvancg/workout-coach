@@ -7,7 +7,6 @@ export function TodayTab({
   authUserEmail,
   authConfigured,
   authStatus,
-  syncIdentityEmail,
   installReady,
   programs,
   currentProgramMeta,
@@ -22,24 +21,45 @@ export function TodayTab({
   signInWithMagicLink,
   signOut,
   updateState,
+  onVoiceSelect,
   syncConnected,
-  syncTarget,
-  syncStatus,
-  syncUrlLooksLikeSpreadsheet,
 }) {
   const authSignedIn = Boolean(authUserEmail);
   const syncModeLabel = !authConfigured
-    ? "Supabase auth not configured"
+    ? "Login not configured"
     : !authSignedIn
       ? "Signed out - local only until login"
-      : syncConnected
-        ? "Connected to sync"
-        : syncTarget === null
-          ? "Local-only mode"
-          : "Sync not connected";
+      : "Signed in";
 
   return (
     <>
+      <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
+        <CardHeader className="card-block-header">
+          <CardTitle className="text-2xl font-black">Account</CardTitle>
+        </CardHeader>
+        <CardContent className="card-block-body space-y-3">
+          {!authConfigured && <div className="text-sm font-bold">Add your login settings to enable private sync.</div>}
+          {authConfigured && !authSignedIn && (
+            <>
+              <div className="text-sm font-bold">Use the app freely offline, then sign in when you want your history synced across devices.</div>
+              <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="email" autoComplete="email" placeholder="you@example.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <Button className="h-14 text-base font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signInWithGoogle}>Google</Button>
+                <Button className="h-14 text-base font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Email Link</Button>
+              </div>
+            </>
+          )}
+          {authConfigured && authSignedIn && (
+            <>
+              <div className="text-sm font-bold">Signed in as {authUserEmail}</div>
+              <div className="text-xs font-semibold">Your synced history is available on this device.</div>
+              <Button className="w-full h-14 text-base font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
+            </>
+          )}
+          {authStatus && <div className="text-xs font-semibold">{authStatus}</div>}
+        </CardContent>
+      </Card>
+
       <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
         <CardHeader className="card-block-header">
           <CardTitle className="text-2xl font-black">Session Setup</CardTitle>
@@ -62,8 +82,15 @@ export function TodayTab({
           <div>
             <label className="block text-sm font-black mb-1">Next day in sequence</label>
             <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
-              <div className="text-lg font-black">Day {state.dayType}</div>
-              <div className="text-sm font-semibold">This advances automatically after you finish the current session.</div>
+              <div className="text-sm font-semibold mb-3">This advances automatically after you finish the current session.</div>
+              <div className="day-helper-gap" />
+              <div className="day-pill-row">
+                {['A', 'B', 'C'].map((day) => (
+                  <div key={day} className={`day-pill ${state.dayType === day ? 'day-pill-active' : ''}`}>
+                    Day {day}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -71,38 +98,6 @@ export function TodayTab({
             <label className="block text-sm font-black mb-1">Available dumbbells today</label>
             <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" placeholder="Example: 1, 2, 3, 4, 5, 6" value={state.availableWeights} onChange={(e) => updateState({ availableWeights: e.target.value })} />
             <p className="mt-1 text-xs font-semibold">Enter each dumbbell weight in kg. Exercise suggestions will use this list.</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-black mb-1">Sync API URL</label>
-            <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" placeholder="https://workout-coach-api.your-name.workers.dev" value={state.syncApiUrl} onChange={(e) => updateState({ syncApiUrl: e.target.value })} />
-            <p className="mt-1 text-xs font-semibold">Paste your Worker base URL here for production sync. In local dev, leaving this blank uses the proxied `/api` Worker automatically.</p>
-            {syncUrlLooksLikeSpreadsheet && <p className="mt-1 text-xs font-bold">That still looks like a spreadsheet link. This field should point to your Worker URL.</p>}
-          </div>
-
-          <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel space-y-2">
-            <div>
-              <div className="text-sm font-black">Supabase login</div>
-              <div className="text-xs font-semibold">Sign in with Google or email magic link so sync requests can send your personal session token to the Worker.</div>
-            </div>
-            {!authConfigured && <div className="text-xs font-bold">Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to enable login.</div>}
-            {authConfigured && !authUserEmail && (
-              <div className="space-y-2">
-                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signInWithGoogle}>Sign in with Google</Button>
-                <div className="text-xs font-bold text-center">or</div>
-                <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" type="email" autoComplete="email" placeholder="you@example.com" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
-                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl today-accent" onClick={signInWithMagicLink}>Sign in with email link</Button>
-                <div className="text-xs font-semibold">You can still train and save locally while signed out. Login only unlocks cross-device sync.</div>
-              </div>
-            )}
-            {authConfigured && authUserEmail && (
-              <div className="space-y-2">
-                <div className="text-sm font-bold">Signed in as {authUserEmail}</div>
-                <div className="text-xs font-semibold">Remote sync is available for this device session.</div>
-                <Button className="w-full h-12 text-sm font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
-              </div>
-            )}
-            {authStatus && <div className="text-xs font-semibold">{authStatus}</div>}
           </div>
 
           <div>
@@ -125,7 +120,7 @@ export function TodayTab({
               <select
                 className="w-full border-4 border-black rounded-2xl p-3 text-sm font-bold"
                 value={state.selectedVoiceName}
-                onChange={(e) => updateState({ selectedVoiceName: e.target.value })}
+                onChange={(e) => onVoiceSelect(e.target.value)}
               >
                 {availableFemaleVoices.map((voice) => (
                   <option key={voice.voiceURI || voice.name} value={voice.name}>{voice.name}</option>
@@ -135,11 +130,9 @@ export function TodayTab({
           )}
 
           <div className="sync-indicator-row">
-            <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />
+            <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-warning"}`} />
             <div className="text-sm font-bold">{syncModeLabel}</div>
           </div>
-          {syncIdentityEmail && <div className="text-xs font-semibold">Signed in as {syncIdentityEmail}</div>}
-          {syncStatus && <div className="text-xs font-semibold">{syncStatus}</div>}
         </CardContent>
       </Card>
 

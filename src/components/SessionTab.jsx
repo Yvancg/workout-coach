@@ -10,6 +10,7 @@ export function SessionTab({
   currentExerciseImage,
   repGuideLabel,
   repGuideCountdown,
+  syncConnected,
   syncStatus,
   formatSeconds,
   DEFAULT_REST_SECONDS,
@@ -146,10 +147,10 @@ export function SessionTab({
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
                 <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
-                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4rem] gap-3 items-stretch">
-                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}><RotateCcw className="mr-2 h-5 w-5" /> Restart</Button>
-                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
-                  <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black justify-center" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice cues" : "Unmute voice cues"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+                <div className="rep-guide-actions">
+                  <Button className="h-16 text-base font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={toggleSound}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />} {state.soundEnabled ? "Mute" : "Unmute"}</Button>
+                  <Button className="h-16 text-base font-black border-4 border-black rounded-2xl bg-white text-black rep-guide-action" onClick={restartRepGuide}><RotateCcw className="h-5 w-5" /> Reset</Button>
+                  <Button className="h-16 text-base font-black border-4 border-black rounded-2xl session-accent text-white rep-guide-action" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
                 </div>
               </div>
             ) : (
@@ -174,7 +175,12 @@ export function SessionTab({
                  </div>
                </div>
 
-            {syncStatus && <div className="text-sm font-black">{syncStatus}</div>}
+            {syncStatus && (
+              <div className="sync-indicator-row session-sync-row">
+                <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-warning"}`} />
+                <div className="text-sm font-black">{syncStatus}</div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

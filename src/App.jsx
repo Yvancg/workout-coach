@@ -191,7 +191,7 @@ export default function App() {
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setAuthSession(session || null);
-      setAuthStatus(session ? "Logged in with Supabase." : "");
+      setAuthStatus("");
     });
 
     return () => {
@@ -372,7 +372,6 @@ export default function App() {
     : isAlternateExercise(currentExercise?.name || "")
       ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
-  const syncUrlLooksLikeSpreadsheet = /docs\.google\.com\/spreadsheets/i.test(state.syncApiUrl);
   const syncTarget = getSyncApiBase(state.syncApiUrl);
   const displayedSyncIdentityEmail = authSession?.access_token ? syncIdentityEmail : "";
   const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
@@ -387,6 +386,10 @@ export default function App() {
   ];
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
+  const handleVoiceSelection = (voiceName) => {
+    updateState({ selectedVoiceName: voiceName });
+    speakWithStyle(`Hi there! I am ${voiceName}, your Workout Coach`, true, voiceName, "default");
+  };
   const cancelRepGuideCountdown = () => {
     repGuideStartPendingRef.current = false;
     setRepGuideCountdown(0);
@@ -893,10 +896,8 @@ export default function App() {
             signInWithMagicLink={signInWithMagicLink}
             signOut={signOut}
             updateState={updateState}
+            onVoiceSelect={handleVoiceSelection}
             syncConnected={syncConnected}
-            syncTarget={syncTarget}
-            syncStatus={displayedSyncStatus}
-            syncUrlLooksLikeSpreadsheet={syncUrlLooksLikeSpreadsheet}
           />
         )}
 
@@ -907,11 +908,12 @@ export default function App() {
             currentExercise={currentExercise}
             sessionProgress={sessionProgress}
             resolvedCurrentWeight={resolvedCurrentWeight}
-             currentExerciseImage={currentExerciseImage}
-             repGuideLabel={repGuideLabel}
-             repGuideCountdown={repGuideCountdown}
-             syncStatus={displayedSyncStatus}
-             formatSeconds={formatSeconds}
+            currentExerciseImage={currentExerciseImage}
+            repGuideLabel={repGuideLabel}
+            repGuideCountdown={repGuideCountdown}
+            syncConnected={syncConnected}
+            syncStatus={displayedSyncStatus}
+            formatSeconds={formatSeconds}
              DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
              onExerciseImageError={handleExerciseImageError}
              isAlternateExercise={isAlternateExercise}
