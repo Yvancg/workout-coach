@@ -77,7 +77,6 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
 
-    const bleed = 18;
     const inset = 0;
     const innerWidth = Math.max(0, width - inset * 2);
     const innerHeight = Math.max(0, height - inset * 2);
@@ -105,7 +104,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
 
     return (
-      <svg className="perimeter-progress-svg" viewBox={`${-bleed} ${-bleed} ${width + bleed * 2} ${height + bleed * 2}`} preserveAspectRatio="none" aria-hidden="true">
+      <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <filter id="perimeter-dot-glow" x="-200%" y="-200%" width="400%" height="400%">
             <feGaussianBlur stdDeviation="3.2" result="blur" />
