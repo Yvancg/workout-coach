@@ -117,7 +117,6 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
         </defs>
         <path
           d={path}
-          pathLength={totalLength}
           className="perimeter-progress-stroke"
           strokeDasharray={`${strokeLength} ${totalLength}`}
         />

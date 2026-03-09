@@ -9,7 +9,7 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
-import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, loadWhoAmI, updateRemoteSession } from "./lib/syncClient";
+import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
 import { supabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
@@ -159,7 +159,6 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState("");
   const [authSession, setAuthSession] = useState(null);
   const [syncStatus, setSyncStatus] = useState("");
-  const [syncIdentityEmail, setSyncIdentityEmail] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const { installApp, installReady } = useInstallPrompt();
@@ -233,14 +232,11 @@ export default function App() {
     async function loadRemoteSnapshot() {
       try {
         setSyncStatus("Loading sync...");
-        const [historyResult, whoAmIResult] = await Promise.all([
-          loadHistorySummary(state.syncApiUrl, authSession.access_token),
-          loadWhoAmI(state.syncApiUrl, authSession.access_token),
-        ]);
-        if (historyResult.skipped || whoAmIResult.skipped) return;
+        const historyResult = await loadHistorySummary(state.syncApiUrl, authSession.access_token);
+        if (historyResult.skipped) return;
         if (cancelled) return;
-        const ownerId = whoAmIResult.data?.userId || authSession?.user?.id || "";
-        const ownerEmail = whoAmIResult.data?.email || authSession?.user?.email || "";
+        const ownerId = authSession?.user?.id || "";
+        const ownerEmail = authSession?.user?.email || "";
 
         setState((prev) => ({
           ...prev,
@@ -251,7 +247,6 @@ export default function App() {
             ...prev.history.filter((session) => (session.ownerId || session.ownerEmail || "") !== (ownerId || ownerEmail)),
           ],
         }));
-        setSyncIdentityEmail(whoAmIResult.data?.email || "");
         setSyncStatus("Sync connected");
       } catch (error) {
         if (cancelled) return;
@@ -260,11 +255,9 @@ export default function App() {
           return;
         }
         if (error?.status === 401 || error?.status === 403) {
-          setSyncIdentityEmail("");
           setSyncStatus("Supabase login required for sync.");
           return;
         }
-        setSyncIdentityEmail("");
         setSyncStatus("Sync unavailable. Local save only.");
       }
     }
@@ -541,7 +534,6 @@ export default function App() {
       ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
   const syncTarget = getSyncApiBase(state.syncApiUrl);
-  const displayedSyncIdentityEmail = authSession?.access_token ? syncIdentityEmail : "";
   const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
     ? "Supabase login required for sync."
     : syncStatus;
@@ -726,7 +718,6 @@ export default function App() {
       setAuthStatus(error.message);
       return;
     }
-    setSyncIdentityEmail("");
     setSyncStatus("");
     setAuthStatus("Signed out.");
   };
@@ -1058,7 +1049,6 @@ export default function App() {
             authUserEmail={authUserEmail}
             authConfigured={supabaseConfigured}
             authStatus={authStatus}
-            syncIdentityEmail={displayedSyncIdentityEmail}
             installReady={installReady}
             programs={PROGRAMS}
             currentProgramMeta={currentProgramMeta}
