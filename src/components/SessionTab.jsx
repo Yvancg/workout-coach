@@ -146,10 +146,10 @@ export function SessionTab({
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
                 <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
-                <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-stretch">
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4rem] gap-3 items-stretch">
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}><RotateCcw className="mr-2 h-5 w-5" /> Restart</Button>
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
-                  <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice cues" : "Unmute voice cues"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
+                  <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black justify-center" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice cues" : "Unmute voice cues"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
                 </div>
               </div>
             ) : (
