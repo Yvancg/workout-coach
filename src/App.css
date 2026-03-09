@@ -530,7 +530,6 @@ select {
 .rep-guide-progress-card {
   padding-top: 1.25rem;
   padding-bottom: 1.25rem;
-  min-height: 18.5rem;
 }
 
 .rep-guide-progress-card .rep-guide-actions {
@@ -538,7 +537,7 @@ select {
 }
 
 .rep-guide-status-line {
-  min-height: 1.5rem;
+  min-height: 1.35rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -571,7 +570,7 @@ select {
 
 .perimeter-progress-stroke {
   stroke: #ff7a21;
-  stroke-width: 6.5;
+  stroke-width: 5.5;
 }
 
 .perimeter-progress-card {

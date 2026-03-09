@@ -78,7 +78,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     if (!width || !height || !borderProgress?.active) return null;
 
     const bleed = 18;
-    const inset = 8;
+    const inset = 0;
     const innerWidth = Math.max(0, width - inset * 2);
     const innerHeight = Math.max(0, height - inset * 2);
     const radius = Math.min(24, innerWidth * 0.12, innerHeight * 0.16);
