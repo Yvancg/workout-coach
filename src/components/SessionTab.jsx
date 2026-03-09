@@ -2,63 +2,11 @@ import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, Rotat
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
 
-function pointOnArc(cx, cy, radius, startAngle, endAngle, progress) {
-  const angle = startAngle + (endAngle - startAngle) * progress;
-  return {
-    x: cx + Math.cos(angle) * radius,
-    y: cy + Math.sin(angle) * radius,
-  };
-}
-
-function pointAlongPerimeter(distance, width, height, radius, lengths) {
-  const [, topLength] = lengths;
-  const arc = (Math.PI * radius) / 2;
-  const leftVertical = Math.max(0, height - 2 * radius);
-  const rightVertical = leftVertical;
-
-  let remaining = distance;
-
-  if (remaining <= arc) {
-    return pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= leftVertical) {
-    return { x: 0, y: height - radius - remaining };
-  }
-  remaining -= leftVertical;
-
-  if (remaining <= arc) {
-    return pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= topLength) {
-    return { x: radius + remaining, y: 0 };
-  }
-  remaining -= topLength;
-
-  if (remaining <= arc) {
-    return pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  if (remaining <= rightVertical) {
-    return { x: width, y: radius + remaining };
-  }
-  remaining -= rightVertical;
-
-  if (remaining <= arc) {
-    return pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, remaining / arc);
-  }
-  remaining -= arc;
-
-  return { x: width - radius - remaining, y: height };
-}
-
 function PerimeterProgressFrame({ borderProgress, className, children }) {
   const frameRef = useRef(null);
+  const pathRef = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [pathMetrics, setPathMetrics] = useState({ totalLength: 0, strokeLength: 0, dotPoint: null });
 
   useEffect(() => {
     if (!frameRef.current || typeof ResizeObserver === "undefined") return undefined;
@@ -72,7 +20,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     return () => observer.disconnect();
   }, []);
 
-  const overlay = useMemo(() => {
+  const pathSpec = useMemo(() => {
     const width = size.width;
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
@@ -101,8 +49,39 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     })();
     const strokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
     const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
-    const rawDotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
-    const dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
+    const normalizedProgress = totalLength > 0 ? strokeLength / totalLength : 0;
+
+    return {
+      bleed,
+      width,
+      height,
+      path,
+      normalizedProgress,
+    };
+  }, [borderProgress, size.height, size.width]);
+
+  useEffect(() => {
+    if (!pathSpec || !pathRef.current) {
+      queueMicrotask(() => setPathMetrics({ totalLength: 0, strokeLength: 0, dotPoint: null }));
+      return;
+    }
+
+    let frameId = 0;
+    frameId = requestAnimationFrame(() => {
+      const totalLength = pathRef.current.getTotalLength();
+      const strokeLength = Math.min(totalLength, totalLength * pathSpec.normalizedProgress);
+      const point = strokeLength > 0 ? pathRef.current.getPointAtLength(strokeLength) : null;
+      setPathMetrics({ totalLength, strokeLength, dotPoint: point ? { x: point.x, y: point.y } : null });
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [pathSpec]);
+
+  const overlay = useMemo(() => {
+    if (!pathSpec) return null;
+
+    const { bleed, width, height, path } = pathSpec;
+    const { totalLength, strokeLength, dotPoint } = pathMetrics;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`${-bleed} ${-bleed} ${width + bleed * 2} ${height + bleed * 2}`} preserveAspectRatio="none" aria-hidden="true">
@@ -116,9 +95,10 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
           </filter>
         </defs>
         <path
+          ref={pathRef}
           d={path}
           className="perimeter-progress-stroke"
-          strokeDasharray={`${strokeLength} ${totalLength}`}
+          strokeDasharray={totalLength ? `${strokeLength} ${totalLength}` : undefined}
         />
         {dotPoint && strokeLength > 0 && (
           <g filter="url(#perimeter-dot-glow)">
@@ -128,7 +108,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
         )}
       </svg>
     );
-  }, [borderProgress, size.height, size.width]);
+  }, [pathMetrics, pathSpec]);
 
   return (
     <div ref={frameRef} className={`perimeter-progress-frame ${className}`}>
