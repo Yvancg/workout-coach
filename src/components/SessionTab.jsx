@@ -16,51 +16,124 @@ function buildPerimeterModel(width, height) {
   const verticalLength = Math.max(0, height - 2 * radius);
   const horizontalLength = Math.max(0, width - 2 * radius);
 
-  const segments = [
-    {
-      id: "left",
-      length: arcLength + verticalLength + arcLength,
-      path: `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0`,
-      pointAt(progress) {
-        const travel = this.length * progress;
-        if (travel <= arcLength) return pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, travel / arcLength);
-        if (travel <= arcLength + verticalLength) return { x: 0, y: height - radius - (travel - arcLength) };
-        return pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, (travel - arcLength - verticalLength) / arcLength);
-      },
-    },
-    {
-      id: "top",
-      length: horizontalLength,
-      path: `M ${radius} 0 L ${width - radius} 0`,
-      pointAt(progress) {
-        return { x: radius + horizontalLength * progress, y: 0 };
-      },
-    },
-    {
-      id: "right",
-      length: arcLength + verticalLength + arcLength,
-      path: `M ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height}`,
-      pointAt(progress) {
-        const travel = this.length * progress;
-        if (travel <= arcLength) return pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, travel / arcLength);
-        if (travel <= arcLength + verticalLength) return { x: width, y: radius + (travel - arcLength) };
-        return pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, (travel - arcLength - verticalLength) / arcLength);
-      },
-    },
-    {
-      id: "bottom",
-      length: horizontalLength,
-      path: `M ${width - radius} ${height} L ${radius} ${height}`,
-      pointAt(progress) {
-        return { x: width - radius - horizontalLength * progress, y: height };
-      },
-    },
-  ];
-
   return {
-    totalLength: segments.reduce((sum, segment) => sum + segment.length, 0),
-    segments,
+    radius,
+    arcLength,
+    verticalLength,
+    horizontalLength,
+    leftLength: arcLength + verticalLength + arcLength,
+    topLength: horizontalLength,
+    rightLength: arcLength + verticalLength + arcLength,
+    bottomLength: horizontalLength,
   };
+}
+
+function appendLineTo(parts, x, y) {
+  parts.push(`L ${x} ${y}`);
+}
+
+function appendArcTo(parts, radius, x, y) {
+  parts.push(`A ${radius} ${radius} 0 0 1 ${x} ${y}`);
+}
+
+function buildLeftSegment(parts, width, height, model, progress) {
+  const { radius, arcLength, verticalLength, leftLength } = model;
+  let point = { x: radius, y: height };
+  const travel = leftLength * progress;
+  if (travel <= arcLength) {
+    point = pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, travel / arcLength);
+    appendArcTo(parts, radius, point.x, point.y);
+    return point;
+  }
+  appendArcTo(parts, radius, 0, height - radius);
+  if (travel <= arcLength + verticalLength) {
+    point = { x: 0, y: height - radius - (travel - arcLength) };
+    appendLineTo(parts, point.x, point.y);
+    return point;
+  }
+  appendLineTo(parts, 0, radius);
+  point = pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, (travel - arcLength - verticalLength) / arcLength);
+  appendArcTo(parts, radius, point.x, point.y);
+  return point;
+}
+
+function buildTopSegment(parts, width, height, model, progress) {
+  const { radius, horizontalLength } = model;
+  const point = { x: radius + horizontalLength * progress, y: 0 };
+  appendLineTo(parts, point.x, point.y);
+  return point;
+}
+
+function buildRightSegment(parts, width, height, model, progress) {
+  const { radius, arcLength, verticalLength, rightLength } = model;
+  let point = { x: width - radius, y: 0 };
+  const travel = rightLength * progress;
+  if (travel <= arcLength) {
+    point = pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, travel / arcLength);
+    appendArcTo(parts, radius, point.x, point.y);
+    return point;
+  }
+  appendArcTo(parts, radius, width, radius);
+  if (travel <= arcLength + verticalLength) {
+    point = { x: width, y: radius + (travel - arcLength) };
+    appendLineTo(parts, point.x, point.y);
+    return point;
+  }
+  appendLineTo(parts, width, height - radius);
+  point = pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, (travel - arcLength - verticalLength) / arcLength);
+  appendArcTo(parts, radius, point.x, point.y);
+  return point;
+}
+
+function buildBottomSegment(parts, width, height, model, progress) {
+  const { radius, horizontalLength } = model;
+  const point = { x: width - radius - horizontalLength * progress, y: height };
+  appendLineTo(parts, point.x, point.y);
+  return point;
+}
+
+function buildTrace(borderProgress, width, height) {
+  const model = buildPerimeterModel(width, height);
+  const segmentProgress = borderProgress.segmentProgress || (() => {
+    const totalLength = model.leftLength + model.topLength + model.rightLength + model.bottomLength;
+    let remaining = totalLength * (borderProgress.progress || 0);
+    const lengths = [model.leftLength, model.topLength, model.rightLength, model.bottomLength];
+    return lengths.map((length) => {
+      const fill = Math.max(0, Math.min(1, remaining / length));
+      remaining -= length;
+      return fill;
+    });
+  })();
+
+  const parts = [`M ${model.radius} ${height}`];
+  let point = { x: model.radius, y: height };
+
+  if (segmentProgress[0] > 0) {
+    point = buildLeftSegment(parts, width, height, model, Math.min(1, segmentProgress[0]));
+    if (segmentProgress[0] < 1) return { path: parts.join(' '), point };
+  } else {
+    return { path: '', point: null };
+  }
+
+  if (segmentProgress[1] > 0) {
+    point = buildTopSegment(parts, width, height, model, Math.min(1, segmentProgress[1]));
+    if (segmentProgress[1] < 1) return { path: parts.join(' '), point };
+  } else {
+    return { path: parts.join(' '), point };
+  }
+
+  if (segmentProgress[2] > 0) {
+    point = buildRightSegment(parts, width, height, model, Math.min(1, segmentProgress[2]));
+    if (segmentProgress[2] < 1) return { path: parts.join(' '), point };
+  } else {
+    return { path: parts.join(' '), point };
+  }
+
+  if (segmentProgress[3] > 0) {
+    point = buildBottomSegment(parts, width, height, model, Math.min(1, segmentProgress[3]));
+  }
+
+  return { path: parts.join(' '), point };
 }
 
 function PerimeterProgressFrame({ borderProgress, className, children }) {
@@ -84,29 +157,8 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const height = size.height;
     if (!width || !height || !borderProgress?.active) return null;
 
-    const { totalLength, segments } = buildPerimeterModel(width, height);
-    const segmentProgress = borderProgress.segmentProgress || (() => {
-      let remaining = totalLength * (borderProgress.progress || 0);
-      return segments.map((segment) => {
-        const fill = Math.max(0, Math.min(1, remaining / segment.length));
-        remaining -= segment.length;
-        return fill;
-      });
-    })();
-
-    const activeSegmentIndex = Math.max(
-      0,
-      Math.min(
-        segments.length - 1,
-        segmentProgress.findIndex((value) => value > 0 && value < 1) === -1
-          ? segmentProgress.findLastIndex((value) => value > 0)
-          : segmentProgress.findIndex((value) => value > 0 && value < 1),
-      ),
-    );
-
-    const dotPoint = segmentProgress.some((value) => value > 0)
-      ? segments[activeSegmentIndex].pointAt(Math.max(0, Math.min(1, segmentProgress[activeSegmentIndex] || 0)))
-      : null;
+    const trace = buildTrace(borderProgress, width, height);
+    if (!trace.path || !trace.point) return null;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -119,25 +171,11 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
             </feMerge>
           </filter>
         </defs>
-        {segments.map((segment, index) => {
-          const progress = Math.max(0, Math.min(1, segmentProgress[index] || 0));
-          if (progress <= 0) return null;
-          return (
-            <path
-              key={segment.id}
-              d={segment.path}
-              pathLength={segment.length}
-              className="perimeter-progress-stroke"
-              strokeDasharray={`${segment.length * progress} ${segment.length}`}
-            />
-          );
-        })}
-        {dotPoint && (
-          <g filter="url(#perimeter-dot-glow)">
-            <circle cx={dotPoint.x} cy={dotPoint.y} r="6.5" className="perimeter-progress-dot-glow" />
-            <circle cx={dotPoint.x} cy={dotPoint.y} r="4.5" className="perimeter-progress-dot" />
-          </g>
-        )}
+        <path d={trace.path} className="perimeter-progress-stroke" />
+        <g filter="url(#perimeter-dot-glow)">
+          <circle cx={trace.point.x} cy={trace.point.y} r="6.5" className="perimeter-progress-dot-glow" />
+          <circle cx={trace.point.x} cy={trace.point.y} r="4.5" className="perimeter-progress-dot" />
+        </g>
       </svg>
     );
   }, [borderProgress, size.height, size.width]);
