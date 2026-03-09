@@ -35,21 +35,44 @@ import {
   todayDateLabel,
 } from "./lib/workoutUtils";
 
-function speakWithStyle(text, enabled, mode = "default") {
+function getFemaleVoices() {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
+
+  const femaleMatcher = /Samantha|Karen|Moira|Tessa|Serena|Ava|Allison|Susan|Victoria|Fiona|Veena|Anna|Zira|Aria|Jenny|Emma|Olivia|Google UK English Female|Google US English Female/i;
+  const maleMatcher = /Daniel|Alex|Guy|David|Thomas|Fred|Junior/i;
+
+  return window.speechSynthesis.getVoices().filter((voice) => (
+    /en-/i.test(voice.lang)
+    && femaleMatcher.test(voice.name)
+    && !maleMatcher.test(voice.name)
+  ));
+}
+
+function getPreferredVoice(selectedVoiceName = "") {
+  const femaleVoices = getFemaleVoices();
+  if (selectedVoiceName) {
+    const selectedVoice = femaleVoices.find((voice) => voice.name === selectedVoiceName);
+    if (selectedVoice) return selectedVoice;
+  }
+
+  const voiceMatchers = [
+    /Samantha|Karen|Moira|Google UK English Female|Google US English Female|Microsoft Aria|Microsoft Jenny/i,
+    /Google.*English.*Female|Microsoft.*English|Victoria|Fiona|Anna/i,
+  ];
+
+  return voiceMatchers
+    .map((matcher) => femaleVoices.find((voice) => matcher.test(voice.name)))
+    .find(Boolean)
+    || femaleVoices.find((voice) => !voice.localService)
+    || femaleVoices[0]
+    || null;
+}
+
+function speakWithStyle(text, enabled, selectedVoiceName = "", mode = "default") {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
   if (!text) return;
 
-  const voices = window.speechSynthesis.getVoices();
-  const voiceMatchers = [
-    /Samantha|Daniel|Karen|Moira|Google UK English Female|Google US English Female|Microsoft Aria|Microsoft Jenny|Microsoft Guy/i,
-    /Google.*English|Microsoft.*English|Alex/i,
-  ];
-  const preferredVoice = voiceMatchers
-    .map((matcher) => voices.find((voice) => matcher.test(voice.name)))
-    .find(Boolean)
-    || voices.find((voice) => /en-/i.test(voice.lang) && !voice.localService)
-    || voices.find((voice) => /en-/i.test(voice.lang))
-    || null;
+  const preferredVoice = getPreferredVoice(selectedVoiceName);
 
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
@@ -61,6 +84,39 @@ function speakWithStyle(text, enabled, mode = "default") {
   utterance.pitch = 0.96;
 
   window.speechSynthesis.speak(utterance);
+}
+
+async function playCountdownBeep(audioContextRef, beep = 880, duration = 0.12) {
+  if (typeof window === "undefined") return;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  const context = audioContextRef.current || new AudioContextClass();
+  audioContextRef.current = context;
+  if (context.state === "suspended") {
+    await context.resume().catch(() => {});
+  }
+
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+  const startTime = context.currentTime + 0.01;
+  const endTime = startTime + duration;
+
+  oscillator.type = "square";
+  oscillator.frequency.setValueAtTime(beep, startTime);
+  gainNode.gain.setValueAtTime(0.0001, startTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.05, startTime + 0.01);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+  oscillator.start(startTime);
+  oscillator.stop(endTime);
+  oscillator.onended = () => {
+    oscillator.disconnect();
+    gainNode.disconnect();
+  };
 }
 
 async function runHaptic(type = "light") {
@@ -82,6 +138,8 @@ async function runHaptic(type = "light") {
 
 export default function App() {
   const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
+  const [availableFemaleVoices, setAvailableFemaleVoices] = useState([]);
+  const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [authEmail, setAuthEmail] = useState("");
   const [authStatus, setAuthStatus] = useState("");
   const [authSession, setAuthSession] = useState(null);
@@ -93,6 +151,32 @@ export default function App() {
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
+  const repGuideCountdownTimeoutsRef = useRef([]);
+  const countdownAudioContextRef = useRef(null);
+  const repGuideStartPendingRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return undefined;
+
+    const syncVoices = () => {
+      const voices = getFemaleVoices();
+      setAvailableFemaleVoices(voices);
+      if (!voices.length) return;
+      if (!state.selectedVoiceName || !voices.some((voice) => voice.name === state.selectedVoiceName)) {
+        const fallbackVoice = getPreferredVoice("");
+        if (fallbackVoice?.name && fallbackVoice.name !== state.selectedVoiceName) {
+          setState((prev) => ({ ...prev, selectedVoiceName: fallbackVoice.name }));
+        }
+      }
+    };
+
+    syncVoices();
+    window.speechSynthesis.onvoiceschanged = syncVoices;
+
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, [state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -169,7 +253,7 @@ export default function App() {
       setTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.setDurationRemaining <= 1) {
-            speakWithStyle("time", prev.soundEnabled, prev.sessionStage === "stretch" ? "stretch" : "set");
+            speakWithStyle("time", prev.soundEnabled, prev.selectedVoiceName, prev.sessionStage === "stretch" ? "stretch" : "set");
             return { ...prev, setDurationRemaining: 0, setTimerRunning: false };
           }
           return { ...prev, setDurationRemaining: prev.setDurationRemaining - 1 };
@@ -184,7 +268,7 @@ export default function App() {
       restTimerRef.current = setInterval(() => {
         setState((prev) => {
           if (prev.restRemaining <= 1) {
-            speakWithStyle("rest over", prev.soundEnabled, "set");
+            speakWithStyle("rest over", prev.soundEnabled, prev.selectedVoiceName, "set");
             return { ...prev, restRemaining: 0, restTimerRunning: false };
           }
           return { ...prev, restRemaining: prev.restRemaining - 1 };
@@ -207,7 +291,7 @@ export default function App() {
 
         if (prev.repGuidePhaseIndex < REP_PHASES.length - 1) {
           const nextPhaseIndex = prev.repGuidePhaseIndex + 1;
-          speakWithStyle(getPhaseCue(REP_PHASES[nextPhaseIndex], nextPhaseIndex), prev.soundEnabled, "set");
+          speakWithStyle(getPhaseCue(REP_PHASES[nextPhaseIndex], nextPhaseIndex), prev.soundEnabled, prev.selectedVoiceName, "set");
           return {
             ...prev,
             repGuidePhaseIndex: nextPhaseIndex,
@@ -217,7 +301,7 @@ export default function App() {
 
         if (isAlternateExercise(exercise.name)) {
           if (prev.repGuideSide === "left") {
-            speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
+            speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, prev.selectedVoiceName, "set");
             return {
               ...prev,
               repGuideSide: "right",
@@ -228,7 +312,7 @@ export default function App() {
 
           const nextRep = prev.currentRep + 1;
           const done = nextRep >= exercise.reps;
-          if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
+          if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, prev.selectedVoiceName, "set");
 
           return {
             ...prev,
@@ -242,7 +326,7 @@ export default function App() {
 
         const nextRep = prev.currentRep + 1;
         const done = nextRep >= exercise.reps;
-        if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, "set");
+        if (!done) speakWithStyle(getPhaseCue(REP_PHASES[0], 0), prev.soundEnabled, prev.selectedVoiceName, "set");
 
         return {
           ...prev,
@@ -303,19 +387,62 @@ export default function App() {
   ];
 
   const updateState = (patch) => setState((prev) => ({ ...prev, ...patch }));
+  const cancelRepGuideCountdown = () => {
+    repGuideStartPendingRef.current = false;
+    setRepGuideCountdown(0);
+    repGuideCountdownTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    repGuideCountdownTimeoutsRef.current = [];
+  };
   const resetRestTimer = () => {
     setState((prev) => (prev.restTimerRunning || prev.restRemaining > 0
       ? { ...prev, restRemaining: 0, restTimerRunning: false }
       : prev));
   };
   const handleTabChange = (tab) => {
+    cancelRepGuideCountdown();
     resetRestTimer();
     updateState({ activeTab: tab });
   };
   const navigateToToday = () => {
+    cancelRepGuideCountdown();
     resetRestTimer();
     updateState({ activeTab: "today" });
   };
+  const startRepGuideWithCountdown = async (nextState) => {
+    cancelRepGuideCountdown();
+    repGuideStartPendingRef.current = true;
+    setState((prev) => ({ ...prev, ...nextState, repGuideRunning: false, repGuidePhaseRemaining: 0 }));
+
+    for (let step = 3; step >= 1; step -= 1) {
+      setRepGuideCountdown(step);
+      setState((prev) => ({ ...prev, repGuidePhaseRemaining: step }));
+      await playCountdownBeep(countdownAudioContextRef);
+      if (step > 1) {
+        await new Promise((resolve) => {
+          const timeoutId = setTimeout(resolve, 1000);
+          repGuideCountdownTimeoutsRef.current.push(timeoutId);
+        });
+      }
+      if (!repGuideStartPendingRef.current) return;
+    }
+
+    setRepGuideCountdown(0);
+    setState((prev) => ({
+      ...prev,
+      ...nextState,
+      repGuideRunning: true,
+      repGuidePhaseRemaining: REP_PHASE_DURATIONS[0],
+    }));
+    speakWithStyle(getPhaseCue(REP_PHASES[0], 0), state.soundEnabled, state.selectedVoiceName, "set");
+    repGuideStartPendingRef.current = false;
+  };
+
+  useEffect(() => () => {
+    repGuideStartPendingRef.current = false;
+    repGuideCountdownTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    repGuideCountdownTimeoutsRef.current = [];
+    countdownAudioContextRef.current?.close().catch(() => {});
+  }, []);
 
   const handleExerciseImageError = () => {
     if (!currentExercise) return;
@@ -413,6 +540,7 @@ export default function App() {
   };
 
   const startSession = () => {
+    cancelRepGuideCountdown();
     const sessionId = `${Date.now()}`;
     updateState({
       sessionStartedAt: new Date().toISOString(),
@@ -434,10 +562,11 @@ export default function App() {
       stretchDone: false,
     });
     runHaptic("medium");
-    speakWithStyle("warm up", state.soundEnabled, "warmup");
+    speakWithStyle("warm up", state.soundEnabled, state.selectedVoiceName, "warmup");
   };
 
   const beginProgramAfterWarmup = () => {
+    cancelRepGuideCountdown();
     const firstExercise = PROGRAMS[state.activeProgram][state.dayType]?.[0];
     updateState({
       warmupDone: true,
@@ -454,10 +583,11 @@ export default function App() {
       restRemaining: 0,
       restTimerRunning: false,
     });
-    speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, "set");
+    speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
 
   const finishSession = () => {
+    cancelRepGuideCountdown();
     const sessionRecord = {
       sessionId: state.sessionId,
       date: todayDateLabel(),
@@ -494,11 +624,12 @@ export default function App() {
     });
     syncSessionToRemote(sessionRecord);
     runHaptic("success");
-    speakWithStyle("session complete", state.soundEnabled, "stretch");
+    speakWithStyle("session complete", state.soundEnabled, state.selectedVoiceName, "stretch");
   };
 
   const moveToNextStage = (restSeconds) => {
     if (!currentExercise) return;
+    cancelRepGuideCountdown();
 
     if (state.currentSet < currentExercise.sets) {
       updateState({
@@ -531,7 +662,7 @@ export default function App() {
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
       });
-      speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, "set");
+      speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, state.selectedVoiceName, "set");
       return;
     }
 
@@ -546,7 +677,7 @@ export default function App() {
       repGuidePhaseRemaining: 0,
       repGuideSide: "left",
     });
-    speakWithStyle("stretch", state.soundEnabled, "stretch");
+    speakWithStyle("stretch", state.soundEnabled, state.selectedVoiceName, "stretch");
   };
 
   const completeSet = async () => {
@@ -577,6 +708,7 @@ export default function App() {
 
   const resetSession = () => {
     resetRestTimer();
+    cancelRepGuideCountdown();
     confirmAction("Reset the full session and clear current progress?", () => {
       runHaptic("light");
       updateState({
@@ -653,25 +785,24 @@ export default function App() {
     if (!currentExercise || currentExercise.isTime) return;
     resetRestTimer();
 
-    if (state.repGuideRunning) {
-      updateState({ repGuideRunning: false });
+    if (state.repGuideRunning || repGuideStartPendingRef.current) {
+      cancelRepGuideCountdown();
+      updateState({ repGuideRunning: false, repGuidePhaseRemaining: 0 });
       return;
     }
 
     const shouldRestart = state.currentRep >= currentExercise.reps;
     const nextSide = state.currentRep === 0 || shouldRestart ? "left" : state.repGuideSide;
-    updateState({
+    startRepGuideWithCountdown({
       currentRep: shouldRestart ? 0 : state.currentRep,
-      repGuideRunning: true,
       repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: REP_PHASE_DURATIONS[0],
       repGuideSide: nextSide,
     });
-    speakWithStyle(getPhaseCue(REP_PHASES[0], 0), state.soundEnabled, "set");
   };
 
   const restartRepGuide = () => {
     resetRestTimer();
+    cancelRepGuideCountdown();
     confirmAction("Restart the guided rep count for this set?", () => {
       updateState({
         currentRep: 0,
@@ -686,6 +817,7 @@ export default function App() {
   const toggleSetTimer = () => {
     if (!currentExercise?.isTime) return;
     resetRestTimer();
+    cancelRepGuideCountdown();
     if (state.setDurationRemaining === 0) {
       updateState({ setDurationRemaining: currentExercise.reps, setTimerRunning: true });
       return;
@@ -695,12 +827,14 @@ export default function App() {
 
   const resetSetTimer = () => {
     resetRestTimer();
+    cancelRepGuideCountdown();
     confirmAction("Reset this timer back to the full target time?", () => {
       updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false });
     });
   };
 
   const toggleRestTimer = () => {
+    cancelRepGuideCountdown();
     const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
     updateState({
       restTimerRunning: !state.restTimerRunning || state.restRemaining === 0,
@@ -709,6 +843,7 @@ export default function App() {
   };
 
   const skipRest = () => {
+    cancelRepGuideCountdown();
     updateState({ restRemaining: 0, restTimerRunning: false });
   };
 
@@ -733,6 +868,7 @@ export default function App() {
             nextWorkout={nextWorkout}
             completedTodaySets={completedTodaySets}
             latestSession={latestSession}
+            availableFemaleVoices={availableFemaleVoices}
             installApp={installApp}
             setAuthEmail={setAuthEmail}
             startSession={startSession}
@@ -753,13 +889,15 @@ export default function App() {
             currentExercise={currentExercise}
             sessionProgress={sessionProgress}
             resolvedCurrentWeight={resolvedCurrentWeight}
-            currentExerciseImage={currentExerciseImage}
-            repGuideLabel={repGuideLabel}
-            syncStatus={displayedSyncStatus}
+             currentExerciseImage={currentExerciseImage}
+             repGuideLabel={repGuideLabel}
+             repGuideCountdown={repGuideCountdown}
+             syncStatus={displayedSyncStatus}
              formatSeconds={formatSeconds}
              DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
              onExerciseImageError={handleExerciseImageError}
              isAlternateExercise={isAlternateExercise}
+             toggleSound={() => updateState({ soundEnabled: !state.soundEnabled })}
              startSession={startSession}
              beginProgramAfterWarmup={beginProgramAfterWarmup}
              toggleRepGuide={toggleRepGuide}

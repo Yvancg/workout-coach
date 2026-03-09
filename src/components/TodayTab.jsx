@@ -14,6 +14,7 @@ export function TodayTab({
   nextWorkout,
   completedTodaySets,
   latestSession,
+  availableFemaleVoices,
   installApp,
   setAuthEmail,
   startSession,
@@ -114,6 +115,21 @@ export function TodayTab({
               <Play className="mr-2 h-5 w-5" /> Start Session
             </Button>
           </div>
+
+          {availableFemaleVoices.length > 0 && (
+            <div>
+              <label className="block text-sm font-black mb-1">Voice</label>
+              <select
+                className="w-full border-4 border-black rounded-2xl p-3 text-sm font-bold"
+                value={state.selectedVoiceName}
+                onChange={(e) => updateState({ selectedVoiceName: e.target.value })}
+              >
+                {availableFemaleVoices.map((voice) => (
+                  <option key={voice.voiceURI || voice.name} value={voice.name}>{voice.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="sync-indicator-row">
             <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-idle"}`} />

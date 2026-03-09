@@ -152,6 +152,7 @@ export const DEFAULT_STATE = {
   logs: [],
   syncApiUrl: import.meta.env.VITE_SYNC_API_URL || "",
   soundEnabled: true,
+  selectedVoiceName: "",
   history: [],
   todayNote: "",
   activeTab: "today",

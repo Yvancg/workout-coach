@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, RotateCcw, Save, TimerReset } from "lucide-react";
+import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, RotateCcw, Save, TimerReset, Volume2, VolumeX } from "lucide-react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
 
 export function SessionTab({
@@ -9,11 +9,13 @@ export function SessionTab({
   resolvedCurrentWeight,
   currentExerciseImage,
   repGuideLabel,
+  repGuideCountdown,
   syncStatus,
   formatSeconds,
   DEFAULT_REST_SECONDS,
   onExerciseImageError,
   isAlternateExercise,
+  toggleSound,
   startSession,
   beginProgramAfterWarmup,
   toggleRepGuide,
@@ -143,10 +145,11 @@ export function SessionTab({
               <div className="border-4 border-black rounded-3xl p-4 text-center space-y-3">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
-                <div className="text-sm font-bold">{repGuideLabel} {isAlternateExercise(currentExercise.name) ? "per side" : ""}</div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-stretch">
                   <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl bg-white text-black" onClick={restartRepGuide}><RotateCcw className="mr-2 h-5 w-5" /> Restart</Button>
-                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning ? "Pause" : "Start"}</Button>
+                  <Button className="h-16 text-2xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleRepGuide}>{state.repGuideRunning || repGuideCountdown > 0 ? <Pause className="mr-2 h-5 w-5" /> : <Play className="mr-2 h-5 w-5" />} {state.repGuideRunning || repGuideCountdown > 0 ? "Pause" : "Start"}</Button>
+                  <Button className="h-16 w-16 p-0 border-4 border-black rounded-2xl bg-white text-black" onClick={toggleSound} aria-label={state.soundEnabled ? "Mute voice cues" : "Unmute voice cues"}>{state.soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}</Button>
                 </div>
               </div>
             ) : (
