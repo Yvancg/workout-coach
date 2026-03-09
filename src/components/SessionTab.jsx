@@ -102,28 +102,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const strokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
     const rawDotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), innerWidth, innerHeight, radius, lengths) : null;
     const dotPoint = rawDotPoint ? { x: rawDotPoint.x + inset, y: rawDotPoint.y + inset } : null;
-    const paths = [
-      {
-        d: `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset}`,
-        length: leftLength,
-        progress: segmentProgress[0] || 0,
-      },
-      {
-        d: `M ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset}`,
-        length: topLength,
-        progress: segmentProgress[1] || 0,
-      },
-      {
-        d: `M ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight}`,
-        length: rightLength,
-        progress: segmentProgress[2] || 0,
-      },
-      {
-        d: `M ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`,
-        length: bottomLength,
-        progress: segmentProgress[3] || 0,
-      },
-    ];
+    const path = `M ${inset + radius} ${inset + innerHeight} A ${radius} ${radius} 0 0 1 ${inset} ${inset + innerHeight - radius} L ${inset} ${inset + radius} A ${radius} ${radius} 0 0 1 ${inset + radius} ${inset} L ${inset + innerWidth - radius} ${inset} A ${radius} ${radius} 0 0 1 ${inset + innerWidth} ${inset + radius} L ${inset + innerWidth} ${inset + innerHeight - radius} A ${radius} ${radius} 0 0 1 ${inset + innerWidth - radius} ${inset + innerHeight} L ${inset + radius} ${inset + innerHeight}`;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`${-bleed} ${-bleed} ${width + bleed * 2} ${height + bleed * 2}`} preserveAspectRatio="none" aria-hidden="true">
@@ -136,19 +115,12 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
             </feMerge>
           </filter>
         </defs>
-        {paths.map((segment) => {
-          const progress = Math.max(0, Math.min(1, segment.progress));
-          if (progress <= 0) return null;
-          return (
-            <path
-              key={segment.d}
-              d={segment.d}
-              pathLength={segment.length}
-              className="perimeter-progress-stroke"
-              strokeDasharray={`${segment.length * progress} ${segment.length}`}
-            />
-          );
-        })}
+        <path
+          d={path}
+          pathLength={totalLength}
+          className="perimeter-progress-stroke"
+          strokeDasharray={`${strokeLength} ${totalLength}`}
+        />
         {dotPoint && strokeLength > 0 && (
           <g filter="url(#perimeter-dot-glow)">
             <circle cx={dotPoint.x} cy={dotPoint.y} r="6.5" className="perimeter-progress-dot-glow" />
