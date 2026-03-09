@@ -2,6 +2,60 @@ import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, Rotat
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
 
+function pointOnArc(cx, cy, radius, startAngle, endAngle, progress) {
+  const angle = startAngle + (endAngle - startAngle) * progress;
+  return {
+    x: cx + Math.cos(angle) * radius,
+    y: cy + Math.sin(angle) * radius,
+  };
+}
+
+function pointAlongPerimeter(distance, width, height, radius, lengths) {
+  const [, topLength] = lengths;
+  const arc = (Math.PI * radius) / 2;
+  const leftVertical = Math.max(0, height - 2 * radius);
+  const rightVertical = leftVertical;
+
+  let remaining = distance;
+
+  if (remaining <= arc) {
+    return pointOnArc(radius, height - radius, radius, Math.PI / 2, Math.PI, remaining / arc);
+  }
+  remaining -= arc;
+
+  if (remaining <= leftVertical) {
+    return { x: 0, y: height - radius - remaining };
+  }
+  remaining -= leftVertical;
+
+  if (remaining <= arc) {
+    return pointOnArc(radius, radius, radius, Math.PI, (3 * Math.PI) / 2, remaining / arc);
+  }
+  remaining -= arc;
+
+  if (remaining <= topLength) {
+    return { x: radius + remaining, y: 0 };
+  }
+  remaining -= topLength;
+
+  if (remaining <= arc) {
+    return pointOnArc(width - radius, radius, radius, (3 * Math.PI) / 2, Math.PI * 2, remaining / arc);
+  }
+  remaining -= arc;
+
+  if (remaining <= rightVertical) {
+    return { x: width, y: radius + remaining };
+  }
+  remaining -= rightVertical;
+
+  if (remaining <= arc) {
+    return pointOnArc(width - radius, height - radius, radius, 0, Math.PI / 2, remaining / arc);
+  }
+  remaining -= arc;
+
+  return { x: width - radius - remaining, y: height };
+}
+
 function PerimeterProgressFrame({ borderProgress, className, children }) {
   const frameRef = useRef(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -30,6 +84,7 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
     const rightLength = Math.max(0, height - 2 * radius) + arc * 2;
     const bottomLength = Math.max(0, width - 2 * radius);
     const lengths = [leftLength, topLength, rightLength, bottomLength];
+    const totalLength = lengths.reduce((sum, value) => sum + value, 0);
 
     const segmentProgress = borderProgress.segmentProgress || (() => {
       const total = lengths.reduce((sum, value) => sum + value, 0);
@@ -40,45 +95,33 @@ function PerimeterProgressFrame({ borderProgress, className, children }) {
         return fill;
       });
     })();
-
-    const paths = [
-      `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0`,
-      `M ${radius} 0 L ${width - radius} 0`,
-      `M ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height}`,
-      `M ${width - radius} ${height} L ${radius} ${height}`,
-    ];
+    const strokeLength = lengths.reduce((sum, length, index) => sum + length * Math.max(0, Math.min(1, segmentProgress[index] || 0)), 0);
+    const path = `M ${radius} ${height} A ${radius} ${radius} 0 0 1 0 ${height - radius} L 0 ${radius} A ${radius} ${radius} 0 0 1 ${radius} 0 L ${width - radius} 0 A ${radius} ${radius} 0 0 1 ${width} ${radius} L ${width} ${height - radius} A ${radius} ${radius} 0 0 1 ${width - radius} ${height} L ${radius} ${height}`;
+    const dotPoint = strokeLength > 0 ? pointAlongPerimeter(Math.min(strokeLength, totalLength), width, height, radius, lengths) : null;
 
     return (
       <svg className="perimeter-progress-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
         <defs>
-          <filter id="perimeter-glow" x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
+          <filter id="perimeter-dot-glow" x="-200%" y="-200%" width="400%" height="400%">
+            <feGaussianBlur stdDeviation="3.2" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
         </defs>
-        {paths.map((path, index) => {
-          const progress = Math.max(0, Math.min(1, segmentProgress[index] || 0));
-          if (progress <= 0) return null;
-          return (
-            <g key={path}>
-              <path
-                d={path}
-                pathLength={lengths[index]}
-                className="perimeter-progress-glow"
-                strokeDasharray={`${lengths[index] * progress} ${lengths[index]}`}
-              />
-              <path
-                d={path}
-                pathLength={lengths[index]}
-                className="perimeter-progress-stroke"
-                strokeDasharray={`${lengths[index] * progress} ${lengths[index]}`}
-              />
-            </g>
-          );
-        })}
+        <path
+          d={path}
+          pathLength={totalLength}
+          className="perimeter-progress-stroke"
+          strokeDasharray={`${strokeLength} ${totalLength}`}
+        />
+        {dotPoint && strokeLength > 0 && (
+          <g filter="url(#perimeter-dot-glow)">
+            <circle cx={dotPoint.x} cy={dotPoint.y} r="6.5" className="perimeter-progress-dot-glow" />
+            <circle cx={dotPoint.x} cy={dotPoint.y} r="4.5" className="perimeter-progress-dot" />
+          </g>
+        )}
       </svg>
     );
   }, [borderProgress, size.height, size.width]);
@@ -229,13 +272,19 @@ export function SessionTab({
               </ul>
             </div>
 
-            <div className="border-4 border-black rounded-3xl p-4 text-center">
-              <div className="text-sm font-black">{currentExercise.isTime ? "Target time" : "Target reps"}</div>
-              <div className="text-5xl font-black mt-2">{currentExercise.isTime ? formatSeconds(currentExercise.reps) : currentExercise.reps}</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border-4 border-black rounded-3xl p-4 text-center">
+                <div className="text-sm font-black">Set number</div>
+                <div className="text-5xl font-black mt-2">{state.currentSet}<span className="text-3xl">/{currentExercise.sets}</span></div>
+              </div>
+              <div className="border-4 border-black rounded-3xl p-4 text-center">
+                <div className="text-sm font-black">{currentExercise.isTime ? "Target time" : "Target reps"}</div>
+                <div className="text-5xl font-black mt-2">{currentExercise.isTime ? formatSeconds(currentExercise.reps) : currentExercise.reps}</div>
+              </div>
             </div>
 
             {!currentExercise.isTime ? (
-              <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card">
+              <PerimeterProgressFrame borderProgress={repGuideBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card rep-guide-progress-card">
                 <div className="text-sm font-black">Voice-guided rep count</div>
                 <div className="text-6xl font-black">{state.currentRep}</div>
                 <div className="text-sm font-bold">{repGuideCountdown > 0 ? `Starting in ${repGuideCountdown}` : `${repGuideLabel}${isAlternateExercise(currentExercise.name) ? " - per side" : ""}`}</div>
@@ -246,7 +295,7 @@ export function SessionTab({
                 </div>
               </PerimeterProgressFrame>
             ) : (
-              <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card">
+              <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center space-y-3 perimeter-progress-card rep-guide-progress-card">
                 <div className="text-sm font-black">Set timer</div>
                 <div className="text-6xl font-black">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
                 <div className="grid grid-cols-2 gap-3">
