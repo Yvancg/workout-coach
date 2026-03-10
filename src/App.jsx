@@ -535,7 +535,7 @@ export default function App() {
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
   const syncTarget = getSyncApiBase(state.syncApiUrl);
   const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
-    ? "Supabase login required for sync."
+    ? "Login required for sync."
     : syncStatus;
   const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
   const authUserEmail = authSession?.user?.email || "";
