@@ -86,6 +86,42 @@ function getSupabaseJwksUrl(env) {
   return issuer ? `${issuer}/.well-known/jwks.json` : "";
 }
 
+function getSupabaseKeepAliveUrl(env) {
+  const supabaseUrl = getSupabaseUrl(env);
+  if (!supabaseUrl || supabaseUrl.includes("your-project-ref")) return "";
+
+  try {
+    return new URL("/auth/v1/health", supabaseUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+async function pingSupabaseKeepAlive(env) {
+  const keepAliveUrl = getSupabaseKeepAliveUrl(env);
+  if (!keepAliveUrl) return;
+
+  const response = await fetch(keepAliveUrl, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "workout-coach-keepalive",
+    },
+  });
+
+  if (response.ok) return;
+
+  const jwksUrl = getSupabaseJwksUrl(env);
+  if (!jwksUrl) throw new Error(`Supabase keep-alive failed: ${response.status}`);
+
+  const fallbackResponse = await fetch(jwksUrl, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "workout-coach-keepalive",
+    },
+  });
+  if (!fallbackResponse.ok) throw new Error(`Supabase keep-alive failed: ${response.status}/${fallbackResponse.status}`);
+}
+
 function getSupabaseAudience(env) {
   return env.SUPABASE_JWT_AUDIENCE?.trim() || "authenticated";
 }
@@ -499,6 +535,10 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
 }
 
 export default {
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(pingSupabaseKeepAlive(env));
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const corsHeaders = getCorsHeaders(request, env);

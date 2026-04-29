@@ -87,6 +87,8 @@ AUDIT_LOG_ENABLED = "true"
 - `WRITE_RATE_LIMIT_MAX` and `WRITE_RATE_LIMIT_WINDOW_SECONDS` cap write bursts on sync routes.
 - `AUDIT_LOG_ENABLED` controls lightweight Worker audit logging for auth failures, rate-limit hits, session edits, and session deletes.
 
+The Worker also has a weekly Cloudflare Cron Trigger (`0 9 * * 1`) that pings Supabase Auth health. This is a low-noise keep-alive request for Free Plan projects and does not write to D1 or user data.
+
 8. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
 
 Example `.env.local`:

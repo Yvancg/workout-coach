@@ -2,6 +2,9 @@ name = "workout-coach-api"
 main = "worker/src/index.js"
 compatibility_date = "2026-03-08"
 
+[triggers]
+crons = ["0 9 * * 1"]
+
 [vars]
 ALLOWED_ORIGINS = "https://your-pages-app.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
 SUPABASE_URL = "https://your-project-ref.supabase.co"
