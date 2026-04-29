@@ -29,10 +29,6 @@ export async function loadHistorySummary(syncApiUrl, accessToken) {
   return fetchSyncJson("/api/history-summary", syncApiUrl, accessToken);
 }
 
-export async function loadWhoAmI(syncApiUrl, accessToken) {
-  return fetchSyncJson("/api/whoami", syncApiUrl, accessToken);
-}
-
 export async function createRemoteSession(syncApiUrl, accessToken, sessionRecord) {
   return fetchSyncJson("/api/sessions", syncApiUrl, accessToken, {
     method: "POST",

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
 import { BottomNav } from "./components/BottomNav";
@@ -10,7 +9,7 @@ import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
-import { supabase, supabaseConfigured } from "./lib/supabaseClient";
+import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
@@ -76,7 +75,7 @@ function getPreferredVoice(selectedVoiceName = "") {
     || null;
 }
 
-function speakWithStyle(text, enabled, selectedVoiceName = "", mode = "default") {
+function speakWithStyle(text, enabled, selectedVoiceName = "") {
   if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
   if (!text) return;
 
@@ -88,7 +87,6 @@ function speakWithStyle(text, enabled, selectedVoiceName = "", mode = "default")
   if (preferredVoice) utterance.voice = preferredVoice;
   utterance.lang = preferredVoice?.lang || "en-US";
 
-  void mode;
   utterance.rate = 0.92;
   utterance.pitch = 0.96;
 
@@ -134,6 +132,7 @@ function deferStateUpdate(callback) {
 
 async function runHaptic(type = "light") {
   try {
+    const { Haptics, ImpactStyle, NotificationType } = await import("@capacitor/haptics");
     if (type === "success") {
       await Haptics.notification({ type: NotificationType.Success });
       return;
@@ -199,24 +198,29 @@ export default function App() {
   }, [state.selectedVoiceName, setState]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabaseConfigured) return undefined;
 
     let mounted = true;
+    let subscription = null;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) {
-        setAuthSession(data.session || null);
-      }
-    });
+    getSupabase().then((supabase) => {
+      if (!mounted || !supabase) return;
+      supabase.auth.getSession().then(({ data }) => {
+        if (mounted) {
+          setAuthSession(data.session || null);
+        }
+      });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthSession(session || null);
-      setAuthStatus("");
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+        setAuthSession(session || null);
+        setAuthStatus("");
+      });
+      subscription = listener.subscription;
     });
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -680,6 +684,7 @@ export default function App() {
   };
 
   const signInWithMagicLink = async () => {
+    const supabase = await getSupabase();
     if (!supabase || !authEmail.trim()) {
       setAuthStatus("Enter your email to receive a magic link.");
       return;
@@ -695,6 +700,7 @@ export default function App() {
   };
 
   const signInWithGoogle = async () => {
+    const supabase = await getSupabase();
     if (!supabase) {
       setAuthStatus("Supabase auth is not configured.");
       return;
@@ -712,6 +718,7 @@ export default function App() {
   };
 
   const signOut = async () => {
+    const supabase = await getSupabase();
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     if (error) {

@@ -237,13 +237,7 @@ export function getSyncHeaders(includeJson = false, accessToken = "") {
   return headers;
 }
 
-export function pickLine(lines, seed = 0) {
-  if (!lines?.length) return "";
-  return lines[seed % lines.length];
-}
-
-export function getPhaseCue(phase, seed = 0) {
-  void seed;
+export function getPhaseCue(phase) {
   if (phase === "Up") return "up";
   if (phase === "Hold") return "hold";
   if (phase === "Down") return "down";

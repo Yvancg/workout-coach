@@ -2,25 +2,6 @@ export const STORAGE_KEY = "yvan-workout-coach-v2";
 
 export const DEFAULT_REST_SECONDS = 30;
 
-export const PLAYFUL_LINES = {
-  sessionStart: ["Warm up first. Let us get you moving.", "Warm up first. Nice and easy to start."],
-  warmup: ["Easy now. Loosen everything up.", "Nice and smooth. Wake the body up.", "Good. Take your time here."],
-  firstExercise: ["First exercise. Let us go.", "First exercise. Stay smooth and strong."],
-  nextExercise: ["Next exercise. Keep that momentum.", "Next exercise. You are doing great.", "Alright, next one. Stay with me."],
-  sessionComplete: ["Session complete. Nice work.", "Session complete. You crushed that."],
-  stretch: ["Workout complete. Finish with stretches.", "Nice work. Finish strong with stretches."],
-  stretchCue: ["Slow it down now.", "Nice and easy here.", "Breathe and let go of the tension."],
-  restDone: ["Rest over. Back to it.", "Rest over. Let us go again."],
-  repPraise: ["Nice.", "Good.", "Strong.", "That is it."],
-  repPush: ["Stay with it.", "Keep it smooth.", "One more clean one.", "You have got this."],
-  phaseUp: ["Up.", "Lift.", "Drive up."],
-  phaseTwo: ["Two.", "And two."],
-  phaseHold: ["Hold.", "Stay there."],
-  phaseLower: ["Lower.", "Ease down."],
-  phaseThree: ["Three.", "Nice and slow."],
-  phaseWait: ["Reset.", "Breathe.", "Stay with it."],
-};
-
 export const SHEET_HEADERS = [
   "timestamp",
   "date",
