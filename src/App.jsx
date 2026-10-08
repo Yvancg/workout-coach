@@ -10,6 +10,7 @@ import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
 import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
+import { clearStateBackup } from "./lib/stateBackup";
 import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
@@ -386,7 +387,7 @@ export default function App() {
     tick();
     setTimerRef.current = window.setInterval(tick, 500);
     return () => window.clearInterval(setTimerRef.current);
-  }, [state.setTimerDeadline, state.setTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
+  }, [state.setDurationRemaining, state.setTimerDeadline, state.setTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.restTimerRunning || state.restRemaining <= 0) return undefined;
@@ -419,7 +420,7 @@ export default function App() {
     tick();
     restTimerRef.current = window.setInterval(tick, 500);
     return () => window.clearInterval(restTimerRef.current);
-  }, [state.restTimerDeadline, state.restTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
+  }, [state.restRemaining, state.restTimerDeadline, state.restTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
@@ -1037,9 +1038,22 @@ export default function App() {
   };
 
   const clearAllData = () => {
-    confirmAction("Clear all local workout data from this device?", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      clearSyncOutbox().catch((error) => console.error("Could not clear pending sync operations.", error));
+    confirmAction("Clear all local workout data from this device?", async () => {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(`${STORAGE_KEY}:savedAt`);
+      } catch (error) {
+        console.error("Could not clear local workout storage.", error);
+      }
+
+      const results = await Promise.allSettled([
+        clearStateBackup(STORAGE_KEY),
+        clearSyncOutbox(),
+      ]);
+      results.filter((result) => result.status === "rejected").forEach((result) => {
+        console.error("Could not clear a local workout data store.", result.reason);
+      });
+
       setState({ ...DEFAULT_STATE });
       setSyncStatus("");
     });
