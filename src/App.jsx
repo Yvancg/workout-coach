@@ -351,34 +351,70 @@ export default function App() {
   }, [activeOwnerEmail, activeOwnerId, activeOwnerKey]);
 
   useEffect(() => {
-    if (state.setTimerRunning && state.setDurationRemaining > 0) {
-      setTimerRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.setDurationRemaining <= 1) {
-            speakWithStyle("time", prev.soundEnabled, prev.selectedVoiceName, prev.sessionStage === "stretch" ? "stretch" : "set");
-            return { ...prev, setDurationRemaining: 0, setTimerRunning: false };
-          }
-          return { ...prev, setDurationRemaining: prev.setDurationRemaining - 1 };
-        });
-      }, 1000);
+    if (!state.setTimerRunning || state.setDurationRemaining <= 0) return undefined;
+
+    if (!state.setTimerDeadline) {
+      setState((prev) => ({
+        ...prev,
+        setTimerDeadline: Date.now() + Math.max(0, prev.setDurationRemaining) * 1000,
+      }));
+      return undefined;
     }
-    return () => clearInterval(setTimerRef.current);
-  }, [state.setTimerRunning, state.setDurationRemaining, state.soundEnabled, setState]);
+
+    const deadline = Number(state.setTimerDeadline);
+    let announced = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remaining === 0 && !announced) {
+        announced = true;
+        speakWithStyle("time", state.soundEnabled, state.selectedVoiceName);
+      }
+      setState((prev) => {
+        if (!prev.setTimerRunning || Number(prev.setTimerDeadline) !== deadline) return prev;
+        if (remaining === 0) {
+          return { ...prev, setDurationRemaining: 0, setTimerRunning: false, setTimerDeadline: null };
+        }
+        return prev.setDurationRemaining === remaining ? prev : { ...prev, setDurationRemaining: remaining };
+      });
+    };
+
+    tick();
+    setTimerRef.current = window.setInterval(tick, 500);
+    return () => window.clearInterval(setTimerRef.current);
+  }, [state.setTimerDeadline, state.setTimerRunning, state.setDurationRemaining, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
-    if (state.restTimerRunning && state.restRemaining > 0) {
-      restTimerRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.restRemaining <= 1) {
-            speakWithStyle("rest over", prev.soundEnabled, prev.selectedVoiceName, "set");
-            return { ...prev, restRemaining: 0, restTimerRunning: false };
-          }
-          return { ...prev, restRemaining: prev.restRemaining - 1 };
-        });
-      }, 1000);
+    if (!state.restTimerRunning || state.restRemaining <= 0) return undefined;
+
+    if (!state.restTimerDeadline) {
+      setState((prev) => ({
+        ...prev,
+        restTimerDeadline: Date.now() + Math.max(0, prev.restRemaining) * 1000,
+      }));
+      return undefined;
     }
-    return () => clearInterval(restTimerRef.current);
-  }, [state.restTimerRunning, state.restRemaining, state.soundEnabled, setState]);
+
+    const deadline = Number(state.restTimerDeadline);
+    let announced = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remaining === 0 && !announced) {
+        announced = true;
+        speakWithStyle("rest over", state.soundEnabled, state.selectedVoiceName);
+      }
+      setState((prev) => {
+        if (!prev.restTimerRunning || Number(prev.restTimerDeadline) !== deadline) return prev;
+        if (remaining === 0) {
+          return { ...prev, restRemaining: 0, restTimerRunning: false, restTimerDeadline: null };
+        }
+        return prev.restRemaining === remaining ? prev : { ...prev, restRemaining: remaining };
+      });
+    };
+
+    tick();
+    restTimerRef.current = window.setInterval(tick, 500);
+    return () => window.clearInterval(restTimerRef.current);
+  }, [state.restTimerDeadline, state.restTimerRunning, state.restRemaining, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
@@ -635,7 +671,7 @@ export default function App() {
   };
   const resetRestTimer = () => {
     setState((prev) => (prev.restTimerRunning || prev.restRemaining > 0
-      ? { ...prev, restRemaining: 0, restTimerRunning: false }
+      ? { ...prev, restRemaining: 0, restTimerRunning: false, restTimerDeadline: null }
       : prev));
   };
   const handleTabChange = (tab) => {
@@ -795,8 +831,10 @@ export default function App() {
       repGuideSide: "left",
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       warmupDone: false,
       stretchDone: false,
     });
@@ -819,8 +857,10 @@ export default function App() {
       repGuideSide: "left",
       setDurationRemaining: firstExercise?.isTime ? firstExercise.reps : 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
     });
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
@@ -848,8 +888,10 @@ export default function App() {
       sessionStage: "idle",
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       repGuideRunning: false,
       repGuidePhaseIndex: 0,
       repGuidePhaseRemaining: 0,
@@ -882,8 +924,10 @@ export default function App() {
         repGuideSide: "left",
         setDurationRemaining: currentExercise.isTime ? currentExercise.reps : 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
+        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
       });
       return;
     }
@@ -900,8 +944,10 @@ export default function App() {
         repGuideSide: "left",
         setDurationRemaining: nextExercise?.isTime ? nextExercise.reps : 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
+        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
       });
       speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, state.selectedVoiceName, "set");
       return;
@@ -911,8 +957,10 @@ export default function App() {
       sessionStage: "stretch",
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       repGuideRunning: false,
       repGuidePhaseIndex: 0,
       repGuidePhaseRemaining: 0,
@@ -961,8 +1009,10 @@ export default function App() {
         currentRep: 0,
         setDurationRemaining: 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: 0,
         restTimerRunning: false,
+        restTimerDeadline: null,
         warmupDone: false,
         stretchDone: false,
         sessionStage: "idle",
@@ -1063,33 +1113,54 @@ export default function App() {
     if (!currentExercise?.isTime) return;
     resetRestTimer();
     cancelRepGuideCountdown();
-    if (state.setDurationRemaining === 0) {
-      updateState({ setDurationRemaining: currentExercise.reps, setTimerRunning: true });
+
+    if (state.setTimerRunning) {
+      const remaining = state.setTimerDeadline
+        ? Math.max(0, Math.ceil((Number(state.setTimerDeadline) - Date.now()) / 1000))
+        : state.setDurationRemaining;
+      updateState({ setDurationRemaining: remaining, setTimerRunning: false, setTimerDeadline: null });
       return;
     }
-    updateState({ setTimerRunning: !state.setTimerRunning });
+
+    const remaining = state.setDurationRemaining || currentExercise.reps;
+    updateState({
+      setDurationRemaining: remaining,
+      setTimerRunning: true,
+      setTimerDeadline: Date.now() + remaining * 1000,
+    });
   };
 
   const resetSetTimer = () => {
     resetRestTimer();
     cancelRepGuideCountdown();
     confirmAction("Reset this timer back to the full target time?", () => {
-      updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false });
+      updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false, setTimerDeadline: null });
     });
   };
 
   const toggleRestTimer = () => {
     cancelRepGuideCountdown();
     const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+
+    if (state.restTimerRunning) {
+      const remaining = state.restTimerDeadline
+        ? Math.max(0, Math.ceil((Number(state.restTimerDeadline) - Date.now()) / 1000))
+        : state.restRemaining;
+      updateState({ restRemaining: remaining, restTimerRunning: false, restTimerDeadline: null });
+      return;
+    }
+
+    const remaining = state.restRemaining || restSeconds;
     updateState({
-      restTimerRunning: !state.restTimerRunning || state.restRemaining === 0,
-      restRemaining: state.restRemaining || restSeconds,
+      restTimerRunning: true,
+      restRemaining: remaining,
+      restTimerDeadline: Date.now() + remaining * 1000,
     });
   };
 
   const skipRest = () => {
     cancelRepGuideCountdown();
-    updateState({ restRemaining: 0, restTimerRunning: false });
+    updateState({ restRemaining: 0, restTimerRunning: false, restTimerDeadline: null });
   };
 
   return (
