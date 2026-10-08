@@ -280,22 +280,27 @@ export default function App() {
 
   const flushPendingSync = useCallback(async () => {
     if (!authSession?.access_token) return { synced: 0, pending: 0 };
-    const result = await flushSyncOutbox((operation) => (
-      sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation)
-    ));
+    const result = await flushSyncOutbox(
+      (operation) => sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation),
+      { ownerId: activeOwnerId, ownerEmail: activeOwnerEmail },
+    );
     if (result.pending > 0) {
       setSyncStatus(`${result.pending} change${result.pending === 1 ? "" : "s"} waiting to sync.`);
     } else if (result.synced > 0) {
       setSyncStatus("Synced");
     }
     return result;
-  }, [authSession?.access_token, state.syncApiUrl]);
+  }, [activeOwnerEmail, activeOwnerId, authSession?.access_token, state.syncApiUrl]);
 
   const queueSyncOperation = useCallback(async (operation) => {
     if (!authSession?.access_token) return { queued: false, pending: 0 };
 
     try {
-      const queuedId = await enqueueSyncOperation(operation);
+      const queuedId = await enqueueSyncOperation({
+        ...operation,
+        ownerId: activeOwnerId,
+        ownerEmail: activeOwnerEmail,
+      });
       if (!queuedId) {
         await sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation);
         setSyncStatus("Synced");
@@ -315,7 +320,7 @@ export default function App() {
       }
       return { queued: true };
     }
-  }, [authSession?.access_token, flushPendingSync, state.syncApiUrl]);
+  }, [activeOwnerEmail, activeOwnerId, authSession?.access_token, flushPendingSync, state.syncApiUrl]);
 
   useEffect(() => {
     if (!authSession?.access_token) return undefined;
