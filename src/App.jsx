@@ -150,7 +150,7 @@ async function runHaptic(type = "light") {
 }
 
 export default function App() {
-  const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
+  const [state, setState, storageError] = usePersistentState(STORAGE_KEY, loadState);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
@@ -381,7 +381,7 @@ export default function App() {
     tick();
     setTimerRef.current = window.setInterval(tick, 500);
     return () => window.clearInterval(setTimerRef.current);
-  }, [state.setTimerDeadline, state.setTimerRunning, state.setDurationRemaining, state.soundEnabled, state.selectedVoiceName, setState]);
+  }, [state.setTimerDeadline, state.setTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.restTimerRunning || state.restRemaining <= 0) return undefined;
@@ -414,7 +414,7 @@ export default function App() {
     tick();
     restTimerRef.current = window.setInterval(tick, 500);
     return () => window.clearInterval(restTimerRef.current);
-  }, [state.restTimerDeadline, state.restTimerRunning, state.restRemaining, state.soundEnabled, state.selectedVoiceName, setState]);
+  }, [state.restTimerDeadline, state.restTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
@@ -1169,6 +1169,12 @@ export default function App() {
         <HeroHeader todayLabel={todayDateLabel()} activeProgram={state.activeProgram} dayType={state.dayType} />
 
         <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={handleTabChange} />
+
+        {storageError && (
+          <div role="alert" className="border-4 border-black rounded-2xl p-3 bg-white text-black font-bold">
+            Workout data could not be saved on this device. Keep this screen open and export your history before closing the app.
+          </div>
+        )}
 
         {state.activeTab === "today" && (
           <TodayTab
