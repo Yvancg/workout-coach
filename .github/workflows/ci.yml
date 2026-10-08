@@ -48,5 +48,12 @@ jobs:
           path: worker-dist/
           retention-days: 1
 
+      - name: Emit Worker bundle handoff
+        run: |
+          echo "__WORKOUT_WORKER_BUNDLE_BEGIN__"
+          base64 -w 0 worker-dist/index.js
+          echo
+          echo "__WORKOUT_WORKER_BUNDLE_END__"
+
       - name: Capacitor Android sync
         run: npx cap sync android
