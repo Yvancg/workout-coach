@@ -19,7 +19,7 @@ function getCorsHeaders(request, env) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key",
     Vary: "Origin",
   };
 }
@@ -414,12 +414,13 @@ async function handleLogCreate(request, env, identity) {
     return json({ error: "Invalid log payload" }, request, env, { status: 400 });
   }
 
+  const clientLogId = String(payload.clientLogId || request.headers.get("Idempotency-Key") || "").trim().slice(0, 128);
   const db = ensureDb(env);
-  await db.prepare(`
-    INSERT INTO workout_logs (
+  const result = await db.prepare(`
+    INSERT OR IGNORE INTO workout_logs (
       timestamp, date, program, day_type, exercise, set_number, target, completed,
-      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id, client_log_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     payload.timestamp,
     payload.date || "",
@@ -437,9 +438,10 @@ async function handleLogCreate(request, env, identity) {
     payload.durationMinutes || 0,
     identity.ownerEmail,
     identity.ownerId,
+    clientLogId,
   ).run();
 
-  return json({ ok: true }, request, env);
+  return json({ ok: true, duplicate: (result.meta?.changes || 0) === 0 }, request, env);
 }
 
 async function handleSessionCreate(request, env, identity) {
