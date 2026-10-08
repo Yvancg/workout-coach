@@ -47,12 +47,13 @@ database_name = "workout_coach"
 database_id = "YOUR_REAL_DATABASE_ID"
 ```
 
-4. Set your allowed frontend origins in `wrangler.toml`:
+4. Copy the local Worker variable template:
 
-```toml
-[vars]
-ALLOWED_ORIGINS = "https://your-app.example.com,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost"
+```bash
+cp .dev.vars.example .dev.vars
 ```
+
+Set `ALLOWED_ORIGINS` and the Supabase values in `.dev.vars` for local development. Production Worker variables are managed in Cloudflare. `wrangler.toml` uses `keep_vars = true` so deploys preserve those remotely managed values.
 
 5. Create a Supabase project and enable email magic-link auth.
 
@@ -68,17 +69,17 @@ In Supabase:
 npx wrangler secret put API_TOKEN
 ```
 
-7. Set the Worker auth and fallback owner values in `wrangler.toml`:
+7. Configure the same Worker variables in Cloudflare for production. Use `.dev.vars` locally. The expected names are:
 
-```toml
-[vars]
-SUPABASE_URL = "https://your-project-ref.supabase.co"
-SUPABASE_JWT_AUDIENCE = "authenticated"
-ADMIN_FALLBACK_OWNER_EMAIL = "you@example.com"
-ADMIN_FALLBACK_OWNER_ID = "admin-script"
-WRITE_RATE_LIMIT_MAX = "60"
-WRITE_RATE_LIMIT_WINDOW_SECONDS = "60"
-AUDIT_LOG_ENABLED = "true"
+```text
+ALLOWED_ORIGINS
+SUPABASE_URL
+SUPABASE_JWT_AUDIENCE
+ADMIN_FALLBACK_OWNER_EMAIL
+ADMIN_FALLBACK_OWNER_ID
+WRITE_RATE_LIMIT_MAX
+WRITE_RATE_LIMIT_WINDOW_SECONDS
+AUDIT_LOG_ENABLED
 ```
 
 - `SUPABASE_URL` is your project URL.
@@ -156,7 +157,7 @@ If you use auth locally, the app signs in through Supabase. The fallback bearer 
 
 ## Production Deploy
 
-Before production deployment, verify that `wrangler.toml` or your Cloudflare environment contains real values for the D1 binding, Supabase URL, and allowed frontend origins. Placeholder values in the repository are examples only.
+Before production deployment, verify the D1 binding in `wrangler.toml` and the remotely managed Cloudflare Worker variables, especially the Supabase URL and allowed frontend origins. `keep_vars = true` prevents Wrangler from deleting dashboard-managed variables during deployment.
 
 Run the production dependency audit and application verification:
 
