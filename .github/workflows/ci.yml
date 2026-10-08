@@ -27,7 +27,6 @@ jobs:
         run: npm ci
 
       - name: Production dependency audit
-        continue-on-error: true
         run: npm audit --omit=dev --audit-level=high
 
       - name: Test
