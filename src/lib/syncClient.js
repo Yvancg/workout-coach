@@ -1,4 +1,4 @@
-import { getSyncApiBase, getSyncHeaders } from "./workoutUtils";
+import { getSyncApiBase, getSyncHeaders } from "./workoutUtils.js";
 
 async function fetchSyncJson(path, syncApiUrl, accessToken = "", init = {}) {
   const apiBase = getSyncApiBase(syncApiUrl);
