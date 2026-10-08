@@ -278,11 +278,12 @@ export default function App() {
   const activeOwnerId = authSession?.user?.id || "";
   const activeOwnerEmail = authSession?.user?.email || "";
   const activeOwnerKey = activeOwnerId || activeOwnerEmail;
+  const accessToken = authSession?.access_token || "";
 
   const flushPendingSync = useCallback(async () => {
-    if (!authSession?.access_token) return { synced: 0, pending: 0 };
+    if (!accessToken) return { synced: 0, pending: 0 };
     const result = await flushSyncOutbox(
-      (operation) => sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation),
+      (operation) => sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation),
       { ownerId: activeOwnerId, ownerEmail: activeOwnerEmail },
     );
     if (result.pending > 0) {
@@ -291,10 +292,10 @@ export default function App() {
       setSyncStatus("Synced");
     }
     return result;
-  }, [activeOwnerEmail, activeOwnerId, authSession?.access_token, state.syncApiUrl]);
+  }, [accessToken, activeOwnerEmail, activeOwnerId, state.syncApiUrl]);
 
   const queueSyncOperation = useCallback(async (operation) => {
-    if (!authSession?.access_token) return { queued: false, pending: 0 };
+    if (!accessToken) return { queued: false, pending: 0 };
 
     try {
       const queuedId = await enqueueSyncOperation({
@@ -303,7 +304,7 @@ export default function App() {
         ownerEmail: activeOwnerEmail,
       });
       if (!queuedId) {
-        await sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation);
+        await sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation);
         setSyncStatus("Synced");
         return { queued: false, pending: 0 };
       }
@@ -321,10 +322,10 @@ export default function App() {
       }
       return { queued: true };
     }
-  }, [activeOwnerEmail, activeOwnerId, authSession?.access_token, flushPendingSync, state.syncApiUrl]);
+  }, [accessToken, activeOwnerEmail, activeOwnerId, flushPendingSync, state.syncApiUrl]);
 
   useEffect(() => {
-    if (!authSession?.access_token) return undefined;
+    if (!accessToken) return undefined;
 
     let cancelled = false;
     const flush = async () => {
@@ -348,7 +349,7 @@ export default function App() {
       window.clearInterval(intervalId);
       window.removeEventListener("online", flush);
     };
-  }, [authSession?.access_token, flushPendingSync]);
+  }, [accessToken, flushPendingSync]);
   const entryBelongsToActiveUser = useCallback((entry) => {
     const entryOwnerId = entry?.ownerId || "";
     const entryOwnerEmail = entry?.ownerEmail || "";
