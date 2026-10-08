@@ -8,7 +8,8 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
-import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
+import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
+import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
 import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
@@ -276,6 +277,72 @@ export default function App() {
   const activeOwnerId = authSession?.user?.id || "";
   const activeOwnerEmail = authSession?.user?.email || "";
   const activeOwnerKey = activeOwnerId || activeOwnerEmail;
+
+  const flushPendingSync = useCallback(async () => {
+    if (!authSession?.access_token) return { synced: 0, pending: 0 };
+    const result = await flushSyncOutbox((operation) => (
+      sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation)
+    ));
+    if (result.pending > 0) {
+      setSyncStatus(`${result.pending} change${result.pending === 1 ? "" : "s"} waiting to sync.`);
+    } else if (result.synced > 0) {
+      setSyncStatus("Synced");
+    }
+    return result;
+  }, [authSession?.access_token, state.syncApiUrl]);
+
+  const queueSyncOperation = useCallback(async (operation) => {
+    if (!authSession?.access_token) return { queued: false, pending: 0 };
+
+    try {
+      const queuedId = await enqueueSyncOperation(operation);
+      if (!queuedId) {
+        await sendQueuedSyncOperation(state.syncApiUrl, authSession.access_token, operation);
+        setSyncStatus("Synced");
+        return { queued: false, pending: 0 };
+      }
+
+      setSyncStatus("Saved locally. Sync pending...");
+      const result = await flushPendingSync();
+      return { queued: result.pending > 0, pending: result.pending };
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        setSyncStatus("Supabase login required for sync.");
+      } else if (error?.status === 429) {
+        setSyncStatus("Sync is rate limited. Saved locally and queued.");
+      } else {
+        setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
+      }
+      return { queued: true };
+    }
+  }, [authSession?.access_token, flushPendingSync, state.syncApiUrl]);
+
+  useEffect(() => {
+    if (!authSession?.access_token) return undefined;
+
+    let cancelled = false;
+    const flush = async () => {
+      try {
+        await flushPendingSync();
+      } catch (error) {
+        if (cancelled) return;
+        if (error?.status === 401 || error?.status === 403) {
+          setSyncStatus("Supabase login required for sync.");
+        } else {
+          setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
+        }
+      }
+    };
+
+    flush();
+    const intervalId = window.setInterval(flush, 60_000);
+    window.addEventListener("online", flush);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", flush);
+    };
+  }, [authSession?.access_token, flushPendingSync]);
   const entryBelongsToActiveUser = useCallback((entry) => {
     const entryOwnerId = entry?.ownerId || "";
     const entryOwnerEmail = entry?.ownerEmail || "";
@@ -629,58 +696,39 @@ export default function App() {
   };
 
   const syncSessionToRemote = async (sessionRecord) => {
-    if (!authSession?.access_token) return;
-    try {
-      setSyncStatus("Saving session to sync...");
-      const result = await createRemoteSession(state.syncApiUrl, authSession.access_token, sessionRecord);
-      if (result.skipped) return;
-      setSyncStatus("Synced");
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
-    }
+    await queueSyncOperation({
+      id: `session-create:${sessionRecord.sessionId}`,
+      type: "session.create",
+      payload: sessionRecord,
+    });
   };
 
   const deleteSessionRemote = async (sessionId) => {
-    if (!authSession?.access_token) return true;
-    try {
-      setSyncStatus("Deleting session from sync...");
-      const result = await deleteRemoteSession(state.syncApiUrl, authSession.access_token, sessionId);
-      if (result.skipped) return true;
-      setSyncStatus("Session deleted from sync");
-      return true;
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync delete failed. Local session removed.");
-      return false;
-    }
+    await queueSyncOperation({
+      id: `session-delete:${sessionId}`,
+      type: "session.delete",
+      sessionId,
+    });
+    return true;
   };
 
   const updateSessionRemote = async (sessionId, sessionPatch) => {
-    if (!authSession?.access_token) return true;
-    try {
-      setSyncStatus("Updating session in sync...");
-      const result = await updateRemoteSession(state.syncApiUrl, authSession.access_token, sessionId, sessionPatch);
-      if (result.skipped) return true;
-      setSyncStatus("Session updated in sync");
-      return true;
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync update failed. Local session updated.");
-      return false;
-    }
+    await queueSyncOperation({
+      id: createOperationId(`session-update:${sessionId}`),
+      type: "session.update",
+      sessionId,
+      payload: sessionPatch,
+    });
+    return true;
   };
 
   const saveSetLocally = async (entry) => {
-    const nextLogs = [...state.logs, entry];
-    updateState({ logs: nextLogs });
-
-    try {
-      if (!authSession?.access_token) return;
-      setSyncStatus("Saving set to sync...");
-      const result = await createRemoteLog(state.syncApiUrl, authSession.access_token, entry);
-      if (result.skipped) return;
-      setSyncStatus("Synced");
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
-    }
+    setState((prev) => ({ ...prev, logs: [...prev.logs, entry] }));
+    await queueSyncOperation({
+      id: entry.clientLogId,
+      type: "log.create",
+      payload: entry,
+    });
   };
 
   const signInWithMagicLink = async () => {
@@ -879,6 +927,7 @@ export default function App() {
     const restSeconds = currentExercise.rest || DEFAULT_REST_SECONDS;
     const completedValue = currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps;
     const entry = {
+      clientLogId: createOperationId("log"),
       timestamp: new Date().toISOString(),
       date: todayDateLabel(),
       program: state.activeProgram,
@@ -935,6 +984,7 @@ export default function App() {
   const clearAllData = () => {
     confirmAction("Clear all local workout data from this device?", () => {
       localStorage.removeItem(STORAGE_KEY);
+      clearSyncOutbox().catch((error) => console.error("Could not clear pending sync operations.", error));
       setState({ ...DEFAULT_STATE });
       setSyncStatus("");
     });
