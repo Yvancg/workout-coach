@@ -101,6 +101,16 @@ VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
 
 The app uses Supabase Auth on the frontend and sends the Supabase access token to the Worker as a bearer token. The Worker verifies that JWT against the Supabase JWKS.
 
+### Local reliability and offline sync
+
+Workout state is stored locally first. The current state is kept in `localStorage` for fast startup and mirrored to IndexedDB as a recovery copy. If the IndexedDB copy is newer, the app restores it at startup.
+
+Authenticated remote writes use an IndexedDB outbox. Set logs and session create/edit/delete operations remain queued when the network or sync service is unavailable, then retry after sign-in, when connectivity returns, and periodically while the app is open.
+
+Workout log writes carry a client-generated idempotency key. Migration `0007_log_idempotency.sql` adds the D1 column/index used to reject duplicate retries safely. Apply all D1 migrations before deploying the Worker version that expects this column.
+
+Set and rest countdowns store absolute deadlines instead of relying only on JavaScript interval ticks, so elapsed time is reconciled after browser or Android background throttling.
+
 9. Apply migrations locally first:
 
 ```bash
@@ -145,6 +155,17 @@ Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do no
 If you use auth locally, the app signs in through Supabase. The fallback bearer token is only for scripts or manual admin testing.
 
 ## Production Deploy
+
+Before production deployment, verify that `wrangler.toml` or your Cloudflare environment contains real values for the D1 binding, Supabase URL, and allowed frontend origins. Placeholder values in the repository are examples only.
+
+Run the production dependency audit and application verification:
+
+```bash
+npm audit --omit=dev --audit-level=high
+npm test
+npm run lint
+npm run build
+```
 
 Deploy the Worker:
 
