@@ -979,7 +979,7 @@ export default function App() {
   const completeSet = async () => {
     if (!currentExercise) return;
 
-    const restSeconds = currentExercise.rest || DEFAULT_REST_SECONDS;
+    const restSeconds = currentExercise.rest ?? DEFAULT_REST_SECONDS;
     const completedValue = currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps;
     const entry = {
       clientLogId: createOperationId("log"),
@@ -1160,7 +1160,7 @@ export default function App() {
 
   const toggleRestTimer = () => {
     cancelRepGuideCountdown();
-    const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+    const restSeconds = currentExercise?.rest ?? DEFAULT_REST_SECONDS;
 
     if (state.restTimerRunning) {
       const remaining = state.restTimerDeadline
