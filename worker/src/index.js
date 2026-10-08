@@ -149,6 +149,31 @@ function safeJsonStringify(value) {
   }
 }
 
+export function boundedText(value, maxLength = 255) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, maxLength);
+}
+
+export function nonNegativeInteger(value, max = 1_000_000) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(max, Math.max(0, Math.trunc(parsed)));
+}
+
+export function sessionBelongsToIdentity(session, identity) {
+  if (!session || !identity) return false;
+  if (session.owner_id) return session.owner_id === identity.ownerId;
+  return session.owner_email === identity.ownerEmail;
+}
+
+function isValidDateLabel(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isValidTimestamp(value) {
+  return Boolean(value) && Number.isFinite(Date.parse(value));
+}
+
 async function logAuditEvent(request, env, event) {
   if (env.AUDIT_LOG_ENABLED === "false") return;
 
@@ -410,11 +435,16 @@ async function handleHistorySummary(env, identity) {
 
 async function handleLogCreate(request, env, identity) {
   const payload = await readJson(request);
-  if (!payload?.timestamp || !payload?.exercise || !payload?.sessionId) {
+  const timestamp = boundedText(payload?.timestamp, 64);
+  const date = boundedText(payload?.date, 10);
+  const exercise = boundedText(payload?.exercise, 120);
+  const sessionId = boundedText(payload?.sessionId, 160);
+
+  if (!isValidTimestamp(timestamp) || !exercise || !sessionId || (date && !isValidDateLabel(date))) {
     return json({ error: "Invalid log payload" }, request, env, { status: 400 });
   }
 
-  const clientLogId = String(payload.clientLogId || request.headers.get("Idempotency-Key") || "").trim().slice(0, 128);
+  const clientLogId = boundedText(payload?.clientLogId || request.headers.get("Idempotency-Key") || "", 128);
   const db = ensureDb(env);
   const result = await db.prepare(`
     INSERT OR IGNORE INTO workout_logs (
@@ -422,20 +452,20 @@ async function handleLogCreate(request, env, identity) {
       is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id, client_log_id
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    payload.timestamp,
-    payload.date || "",
-    payload.program || "",
-    payload.dayType || "",
-    payload.exercise,
-    payload.setNumber || 0,
-    payload.target || 0,
-    payload.completed || 0,
-    payload.isTime ? 1 : 0,
-    payload.weightGuide || "",
-    payload.tempo || "",
-    payload.rest || 0,
-    payload.sessionId,
-    payload.durationMinutes || 0,
+    timestamp,
+    date,
+    boundedText(payload?.program, 120),
+    boundedText(payload?.dayType, 16),
+    exercise,
+    nonNegativeInteger(payload?.setNumber, 1000),
+    nonNegativeInteger(payload?.target, 100000),
+    nonNegativeInteger(payload?.completed, 100000),
+    payload?.isTime === true ? 1 : 0,
+    boundedText(payload?.weightGuide, 160),
+    boundedText(payload?.tempo, 64),
+    nonNegativeInteger(payload?.rest, 86400),
+    sessionId,
+    nonNegativeInteger(payload?.durationMinutes, 100000),
     identity.ownerEmail,
     identity.ownerId,
     clientLogId,
@@ -446,7 +476,9 @@ async function handleLogCreate(request, env, identity) {
 
 async function handleSessionCreate(request, env, identity) {
   const payload = await readJson(request);
-  if (!payload?.sessionId || !payload?.date) {
+  const sessionId = boundedText(payload?.sessionId, 160);
+  const date = boundedText(payload?.date, 10);
+  if (!sessionId || !isValidDateLabel(date)) {
     return json({ error: "Invalid session payload" }, request, env, { status: 400 });
   }
 
@@ -455,9 +487,9 @@ async function handleSessionCreate(request, env, identity) {
     SELECT session_id, owner_id, owner_email
     FROM session_history
     WHERE session_id = ?
-  `).bind(payload.sessionId).first();
+  `).bind(sessionId).first();
 
-  if (existing && existing.owner_id !== identity.ownerId && existing.owner_email !== identity.ownerEmail) {
+  if (existing && !sessionBelongsToIdentity(existing, identity)) {
     return json({ error: "Session id already belongs to another user" }, request, env, { status: 409 });
   }
 
@@ -467,16 +499,16 @@ async function handleSessionCreate(request, env, identity) {
       note, available_weights, warmup_completed, stretch_completed, owner_email, owner_id
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    payload.sessionId,
-    payload.date,
-    payload.program || "",
-    payload.dayType || "",
-    payload.durationMinutes || 0,
-    payload.setsCompleted || 0,
-    payload.note || "",
-    payload.availableWeights || "",
-    payload.warmupCompleted ? 1 : 0,
-    payload.stretchCompleted ? 1 : 0,
+    sessionId,
+    date,
+    boundedText(payload?.program, 120),
+    boundedText(payload?.dayType, 16),
+    nonNegativeInteger(payload?.durationMinutes, 100000),
+    nonNegativeInteger(payload?.setsCompleted, 100000),
+    boundedText(payload?.note, 2000),
+    boundedText(payload?.availableWeights, 240),
+    payload?.warmupCompleted === true ? 1 : 0,
+    payload?.stretchCompleted === true ? 1 : 0,
     identity.ownerEmail,
     identity.ownerId,
   ).run();
@@ -522,8 +554,8 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
     SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?, owner_id = ?
     WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))
   `).bind(
-    payload.note ?? existing.note,
-    payload.availableWeights ?? existing.available_weights,
+    payload.note === undefined ? existing.note : boundedText(payload.note, 2000),
+    payload.availableWeights === undefined ? existing.available_weights : boundedText(payload.availableWeights, 240),
     payload.warmupCompleted === undefined ? existing.warmup_completed : payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted === undefined ? existing.stretch_completed : payload.stretchCompleted ? 1 : 0,
     identity.ownerEmail,
