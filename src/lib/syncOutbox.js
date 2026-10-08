@@ -94,8 +94,15 @@ export async function clearSyncOutbox() {
   db.close();
 }
 
-export async function flushSyncOutbox(sendOperation) {
-  const operations = await listSyncOperations();
+function belongsToOwner(operation, owner = {}) {
+  if (owner.ownerId) return operation.ownerId === owner.ownerId;
+  if (owner.ownerEmail) return !operation.ownerId && operation.ownerEmail === owner.ownerEmail;
+  return false;
+}
+
+export async function flushSyncOutbox(sendOperation, owner = {}) {
+  const allOperations = await listSyncOperations();
+  const operations = allOperations.filter((operation) => belongsToOwner(operation, owner));
   let synced = 0;
   let pending = operations.length;
 
