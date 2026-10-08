@@ -17,7 +17,8 @@
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
     "android": "npm run build && npx cap sync android",
-    "android:bundle": "npm run build && npx cap sync android && bash -lc 'cd android && ./gradlew bundleRelease'"
+    "android:bundle": "npm run build && npx cap sync android && bash -lc 'cd android && ./gradlew bundleRelease'",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
