@@ -219,7 +219,7 @@ export function SessionTab({
   finishSession,
   navigateToToday,
 }) {
-  const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+  const restSeconds = currentExercise?.rest ?? DEFAULT_REST_SECONDS;
 
   return (
     <>
@@ -351,7 +351,7 @@ export function SessionTab({
             ) : (
               <PerimeterProgressFrame borderProgress={setTimerBorderProgress} className="border-4 border-black rounded-3xl p-4 text-center perimeter-progress-card rep-guide-progress-card">
                 <div className="text-sm font-black rep-guide-title">Set timer</div>
-                <div className="text-6xl font-black rep-guide-value">{formatSeconds(state.setDurationRemaining || currentExercise.reps)}</div>
+                <div className="text-6xl font-black rep-guide-value">{formatSeconds(state.setDurationRemaining)}</div>
                 <div className="rep-guide-status-line" />
                 <div className="grid grid-cols-2 gap-3 rep-guide-actions rep-guide-actions-timer">
                   <Button className="h-14 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={toggleSetTimer}>{state.setTimerRunning ? <Pause className="mr-2 h-5 w-5" /> : <Clock3 className="mr-2 h-5 w-5" />} {state.setTimerRunning ? "Pause" : "Start"}</Button>
