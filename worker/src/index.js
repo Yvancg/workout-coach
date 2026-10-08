@@ -618,7 +618,12 @@ export default {
         };
         ctx.waitUntil(logAuditEvent(request, env, auditEvent));
       }
-      return json({ error: error instanceof Error ? error.message : "Unknown error" }, request, env, { status });
+      return json(
+        { error: error instanceof Error ? error.message : "Unknown error" },
+        request,
+        env,
+        { status, headers: error?.headers || {} },
+      );
     }
   },
 };
