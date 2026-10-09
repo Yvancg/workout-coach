@@ -562,7 +562,7 @@ export default function App() {
     updateState({
       ...getProgramStartPatch(firstExercise),
       currentLoadKg: firstRecommendation.recommendedLoadKg > 0 ? String(firstRecommendation.recommendedLoadKg) : "",
-      currentRpe: 7,
+      currentRpe: "",
       completedOverride: "",
     });
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
@@ -610,7 +610,7 @@ export default function App() {
 
     const nextPatch = {
       ...transition.patch,
-      currentRpe: 7,
+      currentRpe: "",
       completedOverride: "",
     };
 
@@ -649,7 +649,7 @@ export default function App() {
     const actualLoadKg = normalizeActualLoadKg(
       state.currentLoadKg === "" ? coachingRecommendation.recommendedLoadKg : state.currentLoadKg,
     );
-    const effortRpe = clampRpe(state.currentRpe);
+    const effortRpe = state.currentRpe === "" ? 0 : clampRpe(state.currentRpe);
     const entry = {
       clientLogId: createOperationId("log"),
       timestamp: new Date().toISOString(),
