@@ -270,10 +270,26 @@ async function verifySupabaseJwt(request, env) {
   }
 
   const jwks = createRemoteJWKSet(new URL(jwksUrl));
-  const { payload } = await jwtVerify(token, jwks, {
-    issuer,
-    audience: getSupabaseAudience(env),
-  });
+  let payload;
+  try {
+    ({ payload } = await jwtVerify(token, jwks, {
+      issuer,
+      audience: getSupabaseAudience(env),
+    }));
+  } catch (error) {
+    const authFailureCodes = new Set([
+      "ERR_JWT_EXPIRED",
+      "ERR_JWT_CLAIM_VALIDATION_FAILED",
+      "ERR_JWT_INVALID",
+      "ERR_JWS_INVALID",
+      "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
+      "ERR_JWKS_NO_MATCHING_KEY",
+    ]);
+    if (authFailureCodes.has(error?.code)) {
+      throw createHttpError(401, "Invalid or expired login");
+    }
+    throw error;
+  }
 
   const ownerId = typeof payload.sub === "string" ? payload.sub.trim() : "";
   const ownerEmail = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
