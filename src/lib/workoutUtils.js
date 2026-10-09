@@ -176,7 +176,7 @@ export function summarizeSessionLogs(logs, sessions) {
       acc[key].sets += 1;
       acc[key].completed += Number(log.completed) || 0;
       acc[key].targetTotal += Number(log.target) || 0;
-      acc[key].totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      acc[key].totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
       if (Number(log.effortRpe) > 0) {
         acc[key].rpeSum += Number(log.effortRpe);
         acc[key].ratedSets += 1;
@@ -223,7 +223,7 @@ export function summarizeSessionLogs(logs, sessions) {
       existing.sets += 1;
       existing.completed += Number(log.completed) || 0;
       existing.targetTotal = (existing.targetTotal || 0) + (Number(log.target) || 0);
-      existing.totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      existing.totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
       if (Number(log.effortRpe) > 0) {
         existing.rpeSum = (existing.rpeSum || 0) + Number(log.effortRpe);
         existing.ratedSets = (existing.ratedSets || 0) + 1;
@@ -238,7 +238,7 @@ export function summarizeSessionLogs(logs, sessions) {
         completed: Number(log.completed) || 0,
         target: log.target,
         isTime: log.isTime,
-        totalKg: (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide)),
+        totalKg: log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide)),
         rpeSum: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
         ratedSets: Number(log.effortRpe) > 0 ? 1 : 0,
         avgRpe: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
@@ -247,7 +247,7 @@ export function summarizeSessionLogs(logs, sessions) {
         completionRate: Number(log.target) > 0 ? (Number(log.completed) || 0) / Number(log.target) : 1,
       });
     }
-    acc[sessionId].totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+    acc[sessionId].totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
     acc[sessionId].totalCompleted += Number(log.completed) || 0;
     return acc;
   }, {}));
