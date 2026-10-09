@@ -216,6 +216,17 @@ async function run() {
     const initialState = await waitForState((state) => state.activeTab === "today", "Initial state did not hydrate.");
     if (initialState.sessionStage !== "idle") fail("Fresh browser did not start idle.");
 
+    const policyPages = await evaluate(`Promise.all([
+      fetch("/privacy.html").then(async (response) => ({ ok: response.ok, text: await response.text() })),
+      fetch("/delete-account.html").then(async (response) => ({ ok: response.ok, text: await response.text() })),
+    ])`);
+    if (!policyPages[0].ok || !policyPages[0].text.includes("Workout Coach Privacy Policy")) {
+      fail("Public privacy policy is unavailable.");
+    }
+    if (!policyPages[1].ok || !policyPages[1].text.includes("Delete your Workout Coach account")) {
+      fail("Public account deletion instructions are unavailable.");
+    }
+
     const manifest = await evaluate('fetch("/manifest.webmanifest").then((r) => r.json())');
     if (manifest.display !== "standalone" || manifest.start_url !== "/") fail("PWA manifest is not installable as expected.");
     if (manifest.theme_color !== "#fcfbf8") fail("PWA manifest theme color does not match the application.");
