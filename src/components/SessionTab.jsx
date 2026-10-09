@@ -394,8 +394,9 @@ export function SessionTab({
                   <select
                     className="w-full border-4 border-black rounded-2xl p-3 text-base font-bold"
                     value={state.currentRpe}
-                    onChange={(e) => updateSetFeedback({ currentRpe: Number(e.target.value) })}
+                    onChange={(e) => updateSetFeedback({ currentRpe: e.target.value === "" ? "" : Number(e.target.value) })}
                   >
+                    <option value="">Not rated</option>
                     {[1,2,3,4,5,6,7,8,9,10].map((value) => (
                       <option key={value} value={value}>{value}</option>
                     ))}
