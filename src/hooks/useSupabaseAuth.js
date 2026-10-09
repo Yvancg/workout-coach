@@ -40,7 +40,9 @@ export function useSupabaseAuth() {
     }
 
     const email = authEmail.trim();
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const redirectTo = typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname === "/delete-account" ? "/delete-account" : ""}`
+      : undefined;
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: redirectTo },
@@ -56,13 +58,36 @@ export function useSupabaseAuth() {
       return;
     }
 
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const redirectTo = typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname === "/delete-account" ? "/delete-account" : ""}`
+      : undefined;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
     });
 
     if (error) setAuthStatus(error.message);
+  };
+
+  const deleteAuthAccount = async () => {
+    const supabase = await getSupabase();
+    if (!supabase || !authSession?.access_token) {
+      setAuthStatus("Sign in before deleting your account.");
+      return false;
+    }
+
+    const { error } = await supabase.functions.invoke("delete-account", {
+      method: "DELETE",
+    });
+    if (error) {
+      setAuthStatus("Could not delete the login account. Please try again.");
+      return false;
+    }
+
+    await supabase.auth.signOut({ scope: "local" });
+    setAuthSession(null);
+    setAuthStatus("Account deleted.");
+    return true;
   };
 
   const signOut = async () => {
@@ -84,6 +109,7 @@ export function useSupabaseAuth() {
     authEmail,
     authSession,
     authStatus,
+    deleteAuthAccount,
     setAuthEmail,
     signInWithGoogle,
     signInWithMagicLink,
