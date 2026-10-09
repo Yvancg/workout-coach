@@ -8,6 +8,7 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
+import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
 import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
 import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
 import { clearStateBackup } from "./lib/stateBackup";
@@ -18,7 +19,6 @@ import {
   runHaptic,
   speakWithStyle,
 } from "./lib/workoutAudio";
-import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
@@ -53,13 +53,20 @@ export default function App() {
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authStatus, setAuthStatus] = useState("");
-  const [authSession, setAuthSession] = useState(null);
   const [syncStatus, setSyncStatus] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const { installApp, installReady } = useInstallPrompt();
+  const {
+    authConfigured,
+    authEmail,
+    authSession,
+    authStatus,
+    setAuthEmail,
+    signInWithGoogle,
+    signInWithMagicLink,
+    signOut: signOutFromAuth,
+  } = useSupabaseAuth();
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
@@ -95,33 +102,6 @@ export default function App() {
       window.speechSynthesis.onvoiceschanged = null;
     };
   }, [state.selectedVoiceName, setState]);
-
-  useEffect(() => {
-    if (!supabaseConfigured) return undefined;
-
-    let mounted = true;
-    let subscription = null;
-
-    getSupabase().then((supabase) => {
-      if (!mounted || !supabase) return;
-      supabase.auth.getSession().then(({ data }) => {
-        if (mounted) {
-          setAuthSession(data.session || null);
-        }
-      });
-
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setAuthSession(session || null);
-        setAuthStatus("");
-      });
-      subscription = listener.subscription;
-    });
-
-    return () => {
-      mounted = false;
-      subscription?.unsubscribe();
-    };
-  }, []);
 
   useEffect(() => {
     const syncTarget = getSyncApiBase(state.syncApiUrl);
@@ -671,50 +651,9 @@ export default function App() {
     });
   };
 
-  const signInWithMagicLink = async () => {
-    const supabase = await getSupabase();
-    if (!supabase || !authEmail.trim()) {
-      setAuthStatus("Enter your email to receive a magic link.");
-      return;
-    }
-
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-    const { error } = await supabase.auth.signInWithOtp({
-      email: authEmail.trim(),
-      options: { emailRedirectTo: redirectTo },
-    });
-
-    setAuthStatus(error ? error.message : `Magic link sent to ${authEmail.trim()}.`);
-  };
-
-  const signInWithGoogle = async () => {
-    const supabase = await getSupabase();
-    if (!supabase) {
-      setAuthStatus("Supabase auth is not configured.");
-      return;
-    }
-
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-
-    if (error) {
-      setAuthStatus(error.message);
-    }
-  };
-
   const signOut = async () => {
-    const supabase = await getSupabase();
-    if (!supabase) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      setAuthStatus(error.message);
-      return;
-    }
-    setSyncStatus("");
-    setAuthStatus("Signed out.");
+    const signedOut = await signOutFromAuth();
+    if (signedOut) setSyncStatus("");
   };
 
   const startSession = () => {
@@ -1098,7 +1037,7 @@ export default function App() {
             state={state}
             authEmail={authEmail}
             authUserEmail={authUserEmail}
-            authConfigured={supabaseConfigured}
+            authConfigured={authConfigured}
             authStatus={authStatus}
             installReady={installReady}
             programs={PROGRAMS}
