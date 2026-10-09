@@ -48,23 +48,30 @@ function chooseClosest(values, target) {
   ), values[0]);
 }
 
-export function resolveWeightGuide(guide, availableWeightsInput) {
+export function resolveWeightGuide(guide, availableWeightsInput, loadMode = "pair") {
   const availableWeights = parseAvailableWeights(availableWeightsInput);
   const hasBodyweight = /bodyweight/i.test(guide);
 
   if (!availableWeights.length) return guide;
 
+  const chooseTotalLoad = (targetTotal, rangeMin = targetTotal, rangeMax = targetTotal) => {
+    const options = loadMode === "single"
+      ? availableWeights.map((weight) => ({ single: weight, total: weight }))
+      : availableWeights.map((weight) => ({ single: weight, total: weight * 2 }));
+    const inRange = options.filter((option) => option.total >= rangeMin && option.total <= rangeMax);
+    return inRange.at(-1) || options.reduce((best, option) => (
+      Math.abs(option.total - targetTotal) < Math.abs(best.total - targetTotal) ? option : best
+    ), options[0]);
+  };
+
   const totalRangeMatch = guide.match(/(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*kg total/i);
   if (totalRangeMatch) {
     const min = Number.parseFloat(totalRangeMatch[1]);
     const max = Number.parseFloat(totalRangeMatch[2]);
-    const pairOptions = availableWeights.map((weight) => ({ single: weight, total: weight * 2 }));
-    const inRange = pairOptions.filter((option) => option.total >= min && option.total <= max);
-    const pick = inRange.at(-1) || pairOptions.reduce((best, option) => (
-      Math.abs(option.total - (min + max) / 2) < Math.abs(best.total - (min + max) / 2) ? option : best
-    ), pairOptions[0]);
-
-    const resolved = `${pick.single} kg each hand (${pick.total} kg total)`;
+    const pick = chooseTotalLoad((min + max) / 2, min, max);
+    const resolved = loadMode === "single"
+      ? `${pick.total} kg total (single dumbbell)`
+      : `${pick.single} kg each hand (${pick.total} kg total)`;
     return hasBodyweight ? `Bodyweight or ${resolved}` : resolved;
   }
 
@@ -80,6 +87,16 @@ export function resolveWeightGuide(guide, availableWeightsInput) {
     const target = Number.parseFloat(oneHandMatch[1]);
     const pick = chooseClosest(availableWeights, target);
     return `${pick} kg in one hand`;
+  }
+
+  const totalMatch = guide.match(/(\d+(?:\.\d+)?)\s*kg total/i);
+  if (totalMatch) {
+    const target = Number.parseFloat(totalMatch[1]);
+    const pick = chooseTotalLoad(target);
+    const resolved = loadMode === "single"
+      ? `${pick.total} kg total (single dumbbell)`
+      : `${pick.single} kg each hand (${pick.total} kg total)`;
+    return hasBodyweight ? `Bodyweight or ${resolved}` : resolved;
   }
 
   if (hasBodyweight) return "Bodyweight";
@@ -150,15 +167,31 @@ export function summarizeSessionLogs(logs, sessions) {
           target: log.target,
           isTime: log.isTime,
           totalKg: 0,
+          rpeSum: 0,
+          ratedSets: 0,
+          lastLoadKg: 0,
+          targetTotal: 0,
         };
       }
       acc[key].sets += 1;
       acc[key].completed += Number(log.completed) || 0;
-      acc[key].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
+      acc[key].targetTotal += Number(log.target) || 0;
+      acc[key].totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      if (Number(log.effortRpe) > 0) {
+        acc[key].rpeSum += Number(log.effortRpe);
+        acc[key].ratedSets += 1;
+      }
+      if (!acc[key].lastLoadKg && Number(log.actualLoadKg) > 0) {
+        acc[key].lastLoadKg = Number(log.actualLoadKg);
+      }
       return acc;
     }, {});
 
-    const exercises = Object.values(byExercise);
+    const exercises = Object.values(byExercise).map((exercise) => ({
+      ...exercise,
+      avgRpe: exercise.ratedSets ? exercise.rpeSum / exercise.ratedSets : 0,
+      completionRate: exercise.targetTotal > 0 ? exercise.completed / exercise.targetTotal : 1,
+    }));
     return {
       ...session,
       exercises,
@@ -189,7 +222,15 @@ export function summarizeSessionLogs(logs, sessions) {
     if (existing) {
       existing.sets += 1;
       existing.completed += Number(log.completed) || 0;
-      existing.totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
+      existing.targetTotal = (existing.targetTotal || 0) + (Number(log.target) || 0);
+      existing.totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      if (Number(log.effortRpe) > 0) {
+        existing.rpeSum = (existing.rpeSum || 0) + Number(log.effortRpe);
+        existing.ratedSets = (existing.ratedSets || 0) + 1;
+        existing.avgRpe = existing.rpeSum / existing.ratedSets;
+      }
+      if (!existing.lastLoadKg && Number(log.actualLoadKg) > 0) existing.lastLoadKg = Number(log.actualLoadKg);
+      existing.completionRate = existing.targetTotal > 0 ? existing.completed / existing.targetTotal : 1;
     } else {
       acc[sessionId].exercises.push({
         exercise: log.exercise,
@@ -197,10 +238,16 @@ export function summarizeSessionLogs(logs, sessions) {
         completed: Number(log.completed) || 0,
         target: log.target,
         isTime: log.isTime,
-        totalKg: (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide),
+        totalKg: log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide)),
+        rpeSum: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
+        ratedSets: Number(log.effortRpe) > 0 ? 1 : 0,
+        avgRpe: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
+        lastLoadKg: Number(log.actualLoadKg) || 0,
+        targetTotal: Number(log.target) || 0,
+        completionRate: Number(log.target) > 0 ? (Number(log.completed) || 0) / Number(log.target) : 1,
       });
     }
-    acc[sessionId].totalKg += (Number(log.completed) || 0) * getWeightTotalKg(log.weightGuide);
+    acc[sessionId].totalKg += log.isTime ? 0 : (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
     acc[sessionId].totalCompleted += Number(log.completed) || 0;
     return acc;
   }, {}));

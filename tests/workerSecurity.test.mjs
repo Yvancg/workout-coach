@@ -7,7 +7,9 @@ import worker, {
   getRateLimitRouteKey,
   isAllowedOrigin,
   nonNegativeInteger,
+  nonNegativeNumber,
   originMatchesRule,
+  ratingInteger,
   sessionBelongsToIdentity,
 } from "../worker/src/index.js";
 
@@ -43,6 +45,15 @@ test("non-negative integer normalization rejects negative and excessive values",
   assert.equal(nonNegativeInteger(12.9, 100), 12);
   assert.equal(nonNegativeInteger(999, 100), 100);
   assert.equal(nonNegativeInteger("not-a-number", 100), 0);
+});
+
+test("coaching numeric inputs are bounded before D1 writes", () => {
+  assert.equal(nonNegativeNumber("5.26", 100), 5.3);
+  assert.equal(nonNegativeNumber(-2, 100), 0);
+  assert.equal(nonNegativeNumber(500, 100), 100);
+  assert.equal(ratingInteger(12, 1, 10, 0), 10);
+  assert.equal(ratingInteger(-3, 1, 10, 0), 1);
+  assert.equal(ratingInteger("bad", 1, 5, 3), 3);
 });
 
 

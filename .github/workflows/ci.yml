@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Apply D1 migrations locally
+        run: npx wrangler d1 migrations apply workout_coach --local
+
       - name: Wrangler Worker dry run
         run: npx wrangler deploy --dry-run --outdir worker-dist
 

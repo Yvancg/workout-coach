@@ -29,12 +29,18 @@ import {
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
+  getProgramDisplayName,
   PROGRAMS,
   REP_PHASE_DURATIONS,
   REP_PHASES,
   SHEET_HEADERS,
   STORAGE_KEY,
 } from "./lib/workoutData";
+import {
+  clampRpe,
+  getCoachingRecommendation,
+  normalizeActualLoadKg,
+} from "./lib/progressionCoach";
 import {
   confirmAction,
   downloadCsv,
@@ -372,10 +378,32 @@ export default function App() {
     () => visibleLogs.filter((log) => log.date === todayDateLabel()).length,
     [visibleLogs],
   );
-  const nextWorkout = `${state.activeProgram} - Day ${state.dayType}`;
+  const currentProgramName = getProgramDisplayName(state.activeProgram);
+  const nextWorkout = `${currentProgramName} - Day ${state.dayType}`;
   const latestSession = visibleHistory[0] || null;
   const activeThemeClass = `${state.activeTab}-theme`;
-  const resolvedCurrentWeight = currentExercise ? resolveWeightGuide(currentExercise.weight, state.availableWeights) : "";
+  const resolvedCurrentWeight = currentExercise
+    ? resolveWeightGuide(currentExercise.weight, state.availableWeights, currentExercise.loadMode || "pair")
+    : "";
+  const coachingRecommendation = useMemo(() => getCoachingRecommendation({
+    exercise: currentExercise,
+    logs: visibleLogs,
+    history: visibleHistory,
+    program: state.activeProgram,
+    dayType: state.dayType,
+    availableWeightsInput: state.availableWeights,
+    readiness: state.todayReadiness,
+    currentSessionId: state.sessionId || "",
+  }), [
+    currentExercise,
+    state.activeProgram,
+    state.availableWeights,
+    state.dayType,
+    state.sessionId,
+    state.todayReadiness,
+    visibleHistory,
+    visibleLogs,
+  ]);
   const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
   const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
   const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
@@ -521,7 +549,22 @@ export default function App() {
   const beginProgramAfterWarmup = () => {
     cancelRepGuideCountdown();
     const firstExercise = PROGRAMS[state.activeProgram][state.dayType]?.[0];
-    updateState(getProgramStartPatch(firstExercise));
+    const firstRecommendation = getCoachingRecommendation({
+      exercise: firstExercise,
+      logs: visibleLogs,
+      history: visibleHistory,
+      program: state.activeProgram,
+      dayType: state.dayType,
+      availableWeightsInput: state.availableWeights,
+      readiness: state.todayReadiness,
+      currentSessionId: state.sessionId || "",
+    });
+    updateState({
+      ...getProgramStartPatch(firstExercise),
+      currentLoadKg: firstRecommendation.recommendedLoadKg > 0 ? String(firstRecommendation.recommendedLoadKg) : "",
+      currentRpe: "",
+      completedOverride: "",
+    });
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
 
@@ -538,6 +581,7 @@ export default function App() {
       ownerEmail: activeOwnerEmail,
       note: state.todayNote,
       availableWeights: state.availableWeights,
+      readiness: Number(state.todayReadiness) || 3,
       warmupCompleted: state.warmupDone,
       stretchCompleted: true,
     };
@@ -564,7 +608,32 @@ export default function App() {
     });
     if (!transition) return;
 
-    updateState(transition.patch);
+    const nextPatch = {
+      ...transition.patch,
+      currentRpe: "",
+      completedOverride: "",
+    };
+
+    if (Number.isInteger(transition.patch.exerciseIndex)) {
+      const nextExercise = exercises[transition.patch.exerciseIndex];
+      const nextRecommendation = getCoachingRecommendation({
+        exercise: nextExercise,
+        logs: visibleLogs,
+        history: visibleHistory,
+        program: state.activeProgram,
+        dayType: state.dayType,
+        availableWeightsInput: state.availableWeights,
+        readiness: state.todayReadiness,
+        currentSessionId: state.sessionId || "",
+      });
+      nextPatch.currentLoadKg = nextRecommendation.recommendedLoadKg > 0
+        ? String(nextRecommendation.recommendedLoadKg)
+        : "";
+    } else if (transition.patch.sessionStage === "stretch") {
+      nextPatch.currentLoadKg = "";
+    }
+
+    updateState(nextPatch);
     if (transition.announcement) {
       speakWithStyle(transition.announcement, state.soundEnabled, state.selectedVoiceName, "set");
     }
@@ -574,7 +643,13 @@ export default function App() {
     if (!currentExercise) return;
 
     const restSeconds = currentExercise.rest ?? DEFAULT_REST_SECONDS;
-    const completedValue = currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps;
+    const overrideText = String(state.completedOverride ?? "").trim();
+    const overrideValue = overrideText === "" ? null : Math.max(0, Math.trunc(Number(overrideText) || 0));
+    const completedValue = overrideValue ?? (currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps);
+    const actualLoadKg = normalizeActualLoadKg(
+      state.currentLoadKg === "" ? coachingRecommendation.recommendedLoadKg : state.currentLoadKg,
+    );
+    const effortRpe = state.currentRpe === "" ? 0 : clampRpe(state.currentRpe);
     const entry = {
       clientLogId: createOperationId("log"),
       timestamp: new Date().toISOString(),
@@ -586,7 +661,13 @@ export default function App() {
       target: currentExercise.reps,
       completed: completedValue,
       isTime: !!currentExercise.isTime,
-      weightGuide: resolveWeightGuide(currentExercise.weight, state.availableWeights),
+      weightGuide: resolveWeightGuide(
+        currentExercise.weight,
+        state.availableWeights,
+        currentExercise.loadMode || "pair",
+      ),
+      actualLoadKg,
+      effortRpe,
       tempo: currentExercise.tempo,
       rest: restSeconds,
       sessionId: state.sessionId,
@@ -653,12 +734,20 @@ export default function App() {
     const nextWeights = window.prompt("Update available weights", session.availableWeights || "");
     if (nextWeights === null) return;
 
+    const readinessInput = window.prompt("Update training readiness (1-5)", session.readiness ? String(session.readiness) : "");
+    if (readinessInput === null) return;
+    const readinessNumber = Number.parseInt(readinessInput, 10);
+    const nextReadiness = Number.isFinite(readinessNumber)
+      ? Math.max(1, Math.min(5, readinessNumber))
+      : Number(session.readiness) || 0;
+
     const nextWarmup = window.confirm("Mark warm up as completed? Click Cancel for not completed.");
     const nextStretch = window.confirm("Mark stretch as completed? Click Cancel for not completed.");
 
     const patch = {
       note: nextNote,
       availableWeights: nextWeights,
+      readiness: nextReadiness,
       warmupCompleted: nextWarmup,
       stretchCompleted: nextStretch,
     };
@@ -761,7 +850,7 @@ export default function App() {
   return (
     <div className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
-        <HeroHeader todayLabel={todayDateLabel()} activeProgram={state.activeProgram} dayType={state.dayType} />
+        <HeroHeader todayLabel={todayDateLabel()} activeProgram={currentProgramName} dayType={state.dayType} />
 
         <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={handleTabChange} />
 
@@ -804,6 +893,8 @@ export default function App() {
             currentExercise={currentExercise}
             sessionProgress={sessionProgress}
             resolvedCurrentWeight={resolvedCurrentWeight}
+            coachingRecommendation={coachingRecommendation}
+            updateSetFeedback={updateState}
             currentExerciseImage={currentExerciseImage}
             repGuideLabel={repGuideLabel}
             repGuideCountdown={repGuideCountdown}
