@@ -128,7 +128,7 @@ export function getSessionFinishPatch(nextDayType) {
     sessionId: null,
     warmupDone: false,
     currentLoadKg: "",
-    currentRpe: 7,
+    currentRpe: "",
     completedOverride: "",
     dayType: nextDayType,
   };
@@ -148,7 +148,7 @@ export function getSessionResetPatch() {
     sessionStartedAt: null,
     sessionId: null,
     currentLoadKg: "",
-    currentRpe: 7,
+    currentRpe: "",
     completedOverride: "",
   };
 }
