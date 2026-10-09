@@ -428,6 +428,44 @@
   color: #b04712;
 }
 
+.policy-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem 1rem;
+  padding-top: 0.25rem;
+}
+
+.policy-link {
+  color: #5b751f;
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.policy-link:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(127, 203, 52, 0.18);
+  border-radius: 0.35rem;
+}
+
+.account-delete-button {
+  background: #fff4f1;
+  border-color: rgba(176, 71, 18, 0.24);
+  color: #9a331c;
+  box-shadow: none;
+}
+
+.account-delete-button:hover {
+  background: #ffebe5;
+}
+
+.account-delete-button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
 .session-footer-button {
   gap: 0.45rem;
   padding-left: 0.9rem;

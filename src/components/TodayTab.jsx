@@ -21,6 +21,8 @@ export function TodayTab({
   signInWithGoogle,
   signInWithMagicLink,
   signOut,
+  deleteAccount,
+  deletingAccount,
   updateState,
   toggleSoundEnabled,
   onVoiceSelect,
@@ -56,9 +58,20 @@ export function TodayTab({
               <div className="text-sm font-bold">Signed in as {authUserEmail}</div>
               <div className="text-xs font-semibold">Your synced history is available on this device.</div>
               <Button className="w-full h-14 text-base font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
+              <Button
+                className="w-full h-14 text-base font-black border-4 border-black rounded-2xl account-delete-button"
+                onClick={deleteAccount}
+                disabled={deletingAccount}
+              >
+                {deletingAccount ? "Deleting account..." : "Delete account and synced data"}
+              </Button>
             </>
           )}
           {authStatus && <div className="text-xs font-semibold" role="status" aria-live="polite">{authStatus}</div>}
+          <div className="policy-link-row">
+            <a className="policy-link" href="/privacy.html">Privacy policy</a>
+            <a className="policy-link" href="/delete-account.html">Account deletion</a>
+          </div>
         </CardContent>
       </Card>
 

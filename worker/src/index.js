@@ -613,6 +613,18 @@ async function handleSessionCreate(request, env, identity) {
   return json({ ok: true }, request, env);
 }
 
+async function handleAccountDelete(request, env, identity) {
+  const db = ensureDb(env);
+  await db.batch([
+    db.prepare(`DELETE FROM workout_logs WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)`).bind(identity.ownerId, identity.ownerEmail),
+    db.prepare(`DELETE FROM session_history WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)`).bind(identity.ownerId, identity.ownerEmail),
+    db.prepare(`DELETE FROM audit_events WHERE owner_email = ?`).bind(identity.ownerEmail),
+    db.prepare(`DELETE FROM request_rate_limits WHERE bucket_key LIKE ?`).bind(`${identity.ownerId}:%`),
+  ]);
+
+  return json({ ok: true, deleted: "account_data" }, request, env);
+}
+
 async function handleSessionDelete(sessionId, request, env, identity) {
   if (!sessionId) {
     return json({ error: "Missing session id" }, request, env, { status: 400 });
@@ -708,6 +720,10 @@ export default {
 
       if (request.method === "POST" && url.pathname === "/api/sessions") {
         return await handleSessionCreate(request, env, identity);
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/api/account") {
+        return await handleAccountDelete(request, env, identity);
       }
 
       if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {

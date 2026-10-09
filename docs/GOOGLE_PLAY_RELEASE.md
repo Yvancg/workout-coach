@@ -91,17 +91,24 @@ The uploader uses the Android Publisher API internal-test track identifier `qa`.
 
 ## Play policy gates before submission
 
-These are not Android build issues and must be completed in Play Console / the public product:
+Implemented in the product:
 
-- Public privacy policy URL, also linked or shown inside the app.
-- Data safety form describing authentication and synced workout data.
+- Privacy policy: `https://workout-coach.pages.dev/privacy.html`
+- External account-deletion information: `https://workout-coach.pages.dev/delete-account.html`
+- Secure self-service deletion flow: `https://workout-coach.pages.dev/delete-account`
+- In-app account deletion from the signed-in Account card
+- Deletion removes synced D1 workout/session data, account-linked security records, the Supabase Auth user, and local data on the device completing deletion
+
+Still requires Play Console completion:
+
+- Data safety form describing authentication and synced workout/fitness data.
 - Health apps declaration. Workout Coach fits **Health and fitness > Activity and Fitness** because it records exercise routines/workouts.
-- Account deletion: because users can create/login to an account, provide both an in-app deletion-request path and an external web deletion-request URL, and delete associated account data when processed.
 - Content rating.
 - Store listing: app icon, feature graphic, screenshots, short/full descriptions and support contact.
-- Internal-test reviewer access as needed.
+- Internal-test reviewer/tester setup as needed.
+- Real-device verification of Google/email login, sync, and account deletion after the production Supabase redirect allowlist is confirmed.
 
-Do not publish to production until these policy items and real-device authentication/sync testing are complete.
+Do not publish to production until the Play Console declarations and real-device authentication/deletion testing are complete.
 
 ## Release verification
 

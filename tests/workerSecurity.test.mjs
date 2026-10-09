@@ -235,3 +235,65 @@ test("missing authentication is rejected before protected API access", async () 
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), { error: "Login required" });
 });
+
+
+test("account deletion removes only the authenticated owner's D1 data classes", async () => {
+  const operations = [];
+  const db = {
+    prepare(sql) {
+      const statement = {
+        sql,
+        values: [],
+        bind(...values) {
+          this.values = values;
+          return this;
+        },
+        async run() {
+          operations.push({ kind: "run", sql: this.sql, values: this.values });
+          return { meta: { changes: 1 } };
+        },
+        async first() {
+          operations.push({ kind: "first", sql: this.sql, values: this.values });
+          return { request_count: 1 };
+        },
+      };
+      return statement;
+    },
+    async batch(statements) {
+      statements.forEach((statement) => {
+        operations.push({ kind: "batch", sql: statement.sql, values: statement.values });
+      });
+      return [];
+    },
+  };
+
+  const response = await worker.fetch(new Request("https://api.example/api/account", {
+    method: "DELETE",
+    headers: {
+      Authorization: "Bearer test-admin-token",
+      Origin: "https://workout-coach.pages.dev",
+    },
+  }), {
+    DB: db,
+    API_TOKEN: "test-admin-token",
+    ADMIN_FALLBACK_OWNER_ID: "owner-delete",
+    ADMIN_FALLBACK_OWNER_EMAIL: "delete@example.com",
+    ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
+    AUDIT_LOG_ENABLED: "false",
+    WRITE_RATE_LIMIT_MAX: "60",
+    WRITE_RATE_LIMIT_WINDOW_SECONDS: "60",
+  }, { waitUntil() {} });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true, deleted: "account_data" });
+
+  const batchDeletes = operations.filter((operation) => operation.kind === "batch");
+  assert.equal(batchDeletes.length, 4);
+  assert.ok(batchDeletes.some((operation) => /DELETE FROM workout_logs/.test(operation.sql)));
+  assert.ok(batchDeletes.some((operation) => /DELETE FROM session_history/.test(operation.sql)));
+  assert.ok(batchDeletes.some((operation) => /DELETE FROM audit_events/.test(operation.sql)));
+  assert.ok(batchDeletes.some((operation) => /DELETE FROM request_rate_limits/.test(operation.sql)));
+
+  const logDelete = batchDeletes.find((operation) => /DELETE FROM workout_logs/.test(operation.sql));
+  assert.deepEqual(logDelete.values, ["owner-delete", "delete@example.com"]);
+});

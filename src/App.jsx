@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
 import { BottomNav } from "./components/BottomNav";
+import { DeleteAccountPage } from "./components/DeleteAccountPage";
 import { HeroHeader } from "./components/HeroHeader";
 import { HistoryTab } from "./components/HistoryTab";
 import { SessionTab } from "./components/SessionTab";
@@ -11,6 +12,7 @@ import { usePersistentState } from "./hooks/usePersistentState";
 import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
 import { useWorkoutSync } from "./hooks/useWorkoutSync";
 import { clearSyncOutbox, createOperationId } from "./lib/syncOutbox";
+import { deleteRemoteAccountData } from "./lib/syncClient";
 import { clearStateBackup } from "./lib/stateBackup";
 import {
   getNextStageTransition,
@@ -67,12 +69,15 @@ export default function App() {
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deletionStatus, setDeletionStatus] = useState("");
   const { installApp, installReady } = useInstallPrompt();
   const {
     authConfigured,
     authEmail,
     authSession,
     authStatus,
+    deleteAuthAccount,
     setAuthEmail,
     signInWithGoogle,
     signInWithMagicLink,
@@ -694,26 +699,67 @@ export default function App() {
     downloadCsv(`workout-log-${todayDateLabel()}.csv`, rows);
   };
 
+  const clearLocalWorkoutData = async () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(`${STORAGE_KEY}:savedAt`);
+    } catch (error) {
+      console.error("Could not clear local workout storage.", error);
+    }
+
+    const results = await Promise.allSettled([
+      clearStateBackup(STORAGE_KEY),
+      clearSyncOutbox(),
+    ]);
+    results.filter((result) => result.status === "rejected").forEach((result) => {
+      console.error("Could not clear a local workout data store.", result.reason);
+    });
+
+    setState({ ...DEFAULT_STATE });
+    clearSyncStatus();
+  };
+
   const clearAllData = () => {
-    confirmAction("Clear all local workout data from this device?", async () => {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(`${STORAGE_KEY}:savedAt`);
-      } catch (error) {
-        console.error("Could not clear local workout storage.", error);
+    confirmAction("Clear all local workout data from this device?", clearLocalWorkoutData);
+  };
+
+  const deleteAccount = async () => {
+    if (deletingAccount) return;
+    if (!authSession?.access_token) {
+      setDeletionStatus("Sign in before deleting your account.");
+      return;
+    }
+
+    const confirmation = window.prompt(
+      "This permanently deletes your account and synced workout data. Type DELETE to continue.",
+    );
+    if (confirmation !== "DELETE") {
+      setDeletionStatus("Account deletion cancelled.");
+      return;
+    }
+
+    setDeletingAccount(true);
+    setDeletionStatus("Deleting synced workout data...");
+
+    try {
+      const result = await deleteRemoteAccountData(state.syncApiUrl, authSession.access_token);
+      if (result.skipped) {
+        throw new Error("Cloud sync is not configured, so account deletion cannot be completed safely.");
       }
 
-      const results = await Promise.allSettled([
-        clearStateBackup(STORAGE_KEY),
-        clearSyncOutbox(),
-      ]);
-      results.filter((result) => result.status === "rejected").forEach((result) => {
-        console.error("Could not clear a local workout data store.", result.reason);
-      });
+      setDeletionStatus("Synced workout data deleted. Removing login account...");
+      const authDeleted = await deleteAuthAccount();
+      if (!authDeleted) {
+        throw new Error("Synced workout data was deleted, but the login account could not be deleted. Sign in again and retry.");
+      }
 
-      setState({ ...DEFAULT_STATE });
-      clearSyncStatus();
-    });
+      await clearLocalWorkoutData();
+      setDeletionStatus("Account and synced workout data deleted.");
+    } catch (error) {
+      setDeletionStatus(error instanceof Error ? error.message : "Could not delete the account. Please try again.");
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const deleteSession = (sessionId) => {
@@ -847,6 +893,25 @@ export default function App() {
     updateState({ restRemaining: 0, restTimerRunning: false, restTimerDeadline: null });
   };
 
+  const pathname = typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") || "/" : "/";
+
+  if (pathname === "/delete-account") {
+    return (
+      <DeleteAccountPage
+        authConfigured={authConfigured}
+        authEmail={authEmail}
+        authUserEmail={authUserEmail}
+        authStatus={authStatus}
+        deletionStatus={deletionStatus}
+        deleting={deletingAccount}
+        setAuthEmail={setAuthEmail}
+        signInWithGoogle={signInWithGoogle}
+        signInWithMagicLink={signInWithMagicLink}
+        deleteAccount={deleteAccount}
+      />
+    );
+  }
+
   return (
     <main id="main-content" className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
@@ -880,6 +945,8 @@ export default function App() {
             signInWithGoogle={signInWithGoogle}
             signInWithMagicLink={signInWithMagicLink}
             signOut={signOut}
+            deleteAccount={deleteAccount}
+            deletingAccount={deletingAccount}
             updateState={updateState}
             toggleSoundEnabled={toggleSoundEnabled}
             onVoiceSelect={handleVoiceSelection}

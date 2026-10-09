@@ -45,6 +45,12 @@ export async function updateRemoteSession(syncApiUrl, accessToken, sessionId, se
   });
 }
 
+export async function deleteRemoteAccountData(syncApiUrl, accessToken) {
+  return fetchSyncJson("/api/account", syncApiUrl, accessToken, {
+    method: "DELETE",
+  });
+}
+
 export async function deleteRemoteSession(syncApiUrl, accessToken, sessionId) {
   return fetchSyncJson(`/api/sessions/${encodeURIComponent(sessionId)}`, syncApiUrl, accessToken, {
     method: "DELETE",

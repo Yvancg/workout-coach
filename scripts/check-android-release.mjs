@@ -4,13 +4,18 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-const [pkgRaw, gradle, variables, manifest, capacitor, gitignore] = await Promise.all([
+const [pkgRaw, gradle, variables, manifest, capacitor, gitignore, privacyPolicy, deletionPage, todayTab, workerSource, deleteFunction] = await Promise.all([
   readFile("package.json", "utf8"),
   readFile("android/app/build.gradle", "utf8"),
   readFile("android/variables.gradle", "utf8"),
   readFile("android/app/src/main/AndroidManifest.xml", "utf8"),
   readFile("capacitor.config.json", "utf8"),
   readFile(".gitignore", "utf8"),
+  readFile("public/privacy.html", "utf8"),
+  readFile("public/delete-account.html", "utf8"),
+  readFile("src/components/TodayTab.jsx", "utf8"),
+  readFile("worker/src/index.js", "utf8"),
+  readFile("supabase/functions/delete-account/index.ts", "utf8"),
 ]);
 
 const pkg = JSON.parse(pkgRaw);
@@ -37,5 +42,17 @@ const permissions = [...manifest.matchAll(/<uses-permission\s+android:name="([^"
 assert(permissions.length === 1 && permissions[0] === "android.permission.INTERNET", `Unexpected Android permissions: ${permissions.join(", ") || "none"}.`);
 
 assert(gitignore.includes("*.jks") && gitignore.includes("*.keystore"), "Keystore files must be ignored by git.");
+
+assert(privacyPolicy.includes("Workout Coach Privacy Policy") && privacyPolicy.includes("/delete-account"), "Public privacy policy or deletion link is missing.");
+assert(deletionPage.includes("Delete your Workout Coach account") && deletionPage.includes("/delete-account"), "Public external account-deletion instructions are missing.");
+assert(todayTab.includes("Delete account and synced data") && todayTab.includes("/privacy.html"), "In-app privacy/account-deletion controls are missing.");
+assert(workerSource.includes('url.pathname === "/api/account"') && workerSource.includes("DELETE FROM workout_logs"), "Authenticated D1 account deletion endpoint is missing.");
+assert(
+  deleteFunction.includes("auth.admin.deleteUser")
+    && deleteFunction.includes("SUPABASE_SERVICE_ROLE_KEY")
+    && deleteFunction.includes('["POST", "DELETE"].includes(req.method)')
+    && deleteFunction.includes("auth.getUser(token)"),
+  "Supabase Auth deletion function is missing or unsafe.",
+);
 
 console.log(`Android Play readiness passed: ${capacitorConfig.appId}, version ${pkg.version}, target API ${targetSdk}, permissions: INTERNET only.`);
