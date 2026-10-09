@@ -1,6 +1,6 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
-function getAllowedOrigins(env) {
+function getAllowedOriginRules(env) {
   const configured = env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) || [];
   return configured.length ? configured : [
     "http://localhost:5173",
@@ -10,18 +10,46 @@ function getAllowedOrigins(env) {
   ];
 }
 
+export function originMatchesRule(origin, rule) {
+  if (!origin || !rule) return false;
+  if (origin === rule) return true;
+
+  if (!rule.startsWith("https://*.")) return false;
+
+  try {
+    const originUrl = new URL(origin);
+    if (originUrl.protocol !== "https:" || originUrl.username || originUrl.password || originUrl.port) return false;
+
+    const suffix = rule.slice("https://*".length).toLowerCase();
+    const hostname = originUrl.hostname.toLowerCase();
+    if (!suffix.startsWith(".") || !hostname.endsWith(suffix)) return false;
+
+    const prefix = hostname.slice(0, -suffix.length);
+    return Boolean(prefix) && !prefix.includes(".");
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedOrigin(origin, env) {
+  if (!origin) return true;
+  return getAllowedOriginRules(env).some((rule) => originMatchesRule(origin, rule));
+}
+
 function getCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
-  const allowedOrigins = getAllowedOrigins(env);
-  const allowOrigin = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || "*";
-
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Credentials": "true",
+  const headers = {
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, Idempotency-Key",
     Vary: "Origin",
   };
+
+  if (origin && isAllowedOrigin(origin, env)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Credentials"] = "true";
+  }
+
+  return headers;
 }
 
 function json(data, request, env, init = {}) {
@@ -65,10 +93,9 @@ function getWeightTotalKg(weightGuide = "") {
 }
 
 function assertAllowedOrigin(request, env) {
-  const origin = request.headers.get("Origin");
-  if (!origin) return;
-  if (!getAllowedOrigins(env).includes(origin)) {
-    throw new Error("Origin not allowed");
+  const origin = request.headers.get("Origin") || "";
+  if (!isAllowedOrigin(origin, env)) {
+    throw createHttpError(403, "Origin not allowed");
   }
 }
 
@@ -164,6 +191,23 @@ export function sessionBelongsToIdentity(session, identity) {
   if (!session || !identity) return false;
   if (session.owner_id) return session.owner_id === identity.ownerId;
   return session.owner_email === identity.ownerEmail;
+}
+
+export function decodeSessionPath(pathname) {
+  const prefix = "/api/sessions/";
+  if (typeof pathname !== "string" || !pathname.startsWith(prefix)) return "";
+
+  try {
+    return boundedText(decodeURIComponent(pathname.slice(prefix.length)), 160);
+  } catch {
+    return "";
+  }
+}
+
+export function getRateLimitRouteKey(pathname) {
+  if (typeof pathname !== "string") return "unknown";
+  if (pathname.startsWith("/api/sessions/")) return "/api/sessions/:sessionId";
+  return pathname;
 }
 
 function isValidDateLabel(value) {
@@ -319,7 +363,8 @@ async function assertWriteRateLimit(request, url, env, identity) {
   const maxRequests = getRateLimitMax(env);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const bucket = Math.floor(nowSeconds / windowSeconds) * windowSeconds;
-  const bucketKey = `${identity.ownerId}:${request.method}:${url.pathname}:${bucket}`;
+  const routeKey = getRateLimitRouteKey(url.pathname);
+  const bucketKey = `${identity.ownerId}:${request.method}:${routeKey}:${bucket}`;
 
   await db.prepare(`
     INSERT INTO request_rate_limits (bucket_key, window_start, request_count, updated_at)
@@ -575,14 +620,14 @@ export default {
 
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const corsHeaders = getCorsHeaders(request, env);
-
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
-    }
 
     try {
       assertAllowedOrigin(request, env);
+
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: getCorsHeaders(request, env) });
+      }
+
       const identity = url.pathname === "/api/health" ? null : await getRequestIdentity(request, env);
       if (identity) {
         await assertWriteRateLimit(request, url, env, identity);
@@ -613,7 +658,10 @@ export default {
       }
 
       if (request.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
-        const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
+        const sessionId = decodeSessionPath(url.pathname);
+        if (!sessionId) {
+          return json({ error: "Invalid session id" }, request, env, { status: 400 });
+        }
         const response = await handleSessionDelete(sessionId, request, env, identity);
         ctx.waitUntil(logAuditEvent(request, env, {
           eventType: "session_delete",
@@ -626,7 +674,10 @@ export default {
       }
 
       if (request.method === "PATCH" && url.pathname.startsWith("/api/sessions/")) {
-        const sessionId = decodeURIComponent(url.pathname.replace("/api/sessions/", ""));
+        const sessionId = decodeSessionPath(url.pathname);
+        if (!sessionId) {
+          return json({ error: "Invalid session id" }, request, env, { status: 400 });
+        }
         const response = await handleSessionUpdate(sessionId, request, env, identity);
         ctx.waitUntil(logAuditEvent(request, env, {
           eventType: "session_update",
@@ -640,7 +691,7 @@ export default {
 
       return json({ error: "Not found" }, request, env, { status: 404 });
     } catch (error) {
-      const status = typeof error?.status === "number" ? error.status : error?.message === "Origin not allowed" ? 403 : 500;
+      const status = typeof error?.status === "number" ? error.status : 500;
       if (status === 401 || status === 403 || status === 429) {
         const auditEvent = error?.auditEvent || {
           eventType: status === 429 ? "rate_limit_hit" : "auth_failure",
@@ -650,8 +701,11 @@ export default {
         };
         ctx.waitUntil(logAuditEvent(request, env, auditEvent));
       }
+      const publicMessage = status >= 500
+        ? "Internal server error"
+        : error instanceof Error ? error.message : "Request failed";
       return json(
-        { error: error instanceof Error ? error.message : "Unknown error" },
+        { error: publicMessage },
         request,
         env,
         { status, headers: error?.headers || {} },
