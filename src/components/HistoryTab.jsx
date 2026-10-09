@@ -1,4 +1,5 @@
 import { Download, Ellipsis, RotateCcw } from "lucide-react";
+import { getProgramDisplayName } from "../lib/workoutData";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "./ui";
 
 export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistoryMenuId, editSession, deleteSession, exportLogs, resetSession, clearAllData }) {
@@ -18,9 +19,9 @@ export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistory
                 <div className="history-session-head">
                   <div className="history-session-topline">
                     <div>
-                      <div className="text-lg font-black">{session.date} • {session.program}</div>
+                      <div className="text-lg font-black">{session.date} • {getProgramDisplayName(session.program)}</div>
                       <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets • {Math.round(session.totalCompleted || 0)} reps/sec • {Math.round(session.totalKg || 0)} kg total</div>
-                      <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}</div>
+                      <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}{session.readiness ? ` • Readiness ${session.readiness}/5` : ""}</div>
                       {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
                       {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
                     </div>
@@ -41,7 +42,7 @@ export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistory
                   {session.exercises.map((exercise) => (
                     <div key={`${session.sessionId}-${exercise.exercise}`} className="history-exercise-row">
                       <div className="text-base font-black">{exercise.exercise}</div>
-                      <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"} • {Math.round(exercise.totalKg || 0)} kg</div>
+                      <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"} • {Math.round(exercise.totalKg || 0)} kg{exercise.avgRpe ? ` • avg RPE ${Number(exercise.avgRpe).toFixed(1)}` : ""}{exercise.lastLoadKg ? ` • last load ${exercise.lastLoadKg} kg` : ""}</div>
                     </div>
                   ))}
                 </div>
