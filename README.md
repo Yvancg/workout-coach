@@ -116,6 +116,22 @@ Workout log writes carry a client-generated idempotency key. Migration `0007_log
 
 Set and rest countdowns store absolute deadlines instead of relying only on JavaScript interval ticks, so elapsed time is reconciled after browser or Android background throttling.
 
+### Progressive coaching
+
+Each set can record the actual external load used (total kg across the dumbbells), completed reps/seconds, and an optional RPE effort rating. Session setup also includes a 1–5 training-readiness value.
+
+Recommendations are deterministic and intentionally conservative:
+- first tracked sessions use the equipment-aware program starting point
+- a fully completed easy session can move up one available load step
+- very hard or incomplete work can move down one load step
+- low readiness reduces the suggested load before progression is considered
+- bodyweight movements progress through reps, time, tempo, or variation instead of inventing an external load
+- exercises marked `Bodyweight or ...` begin unloaded and add weight only after an easy completed baseline
+- single-dumbbell movements such as goblet squats are resolved against one dumbbell, rather than incorrectly doubling the available load
+
+RPE is left unrated unless the user selects a value, so missing effort data is never treated as an assumed score. Migration `0008_progressive_coaching.sql` stores actual load, RPE, and session readiness in D1. Legacy readiness values remain unknown rather than being backfilled.
+
+
 9. Apply migrations locally first:
 
 ```bash
@@ -277,8 +293,13 @@ The Worker also supports an admin fallback `API_TOKEN` for scripts, but normal a
 D1 session records currently include:
 - session note
 - available weights
+- training readiness when recorded
 - warmup completion
 - stretch completion
+
+D1 set logs also include:
+- actual external load in total kg
+- optional RPE effort rating
 
 ## Exercise Reference Assets
 
