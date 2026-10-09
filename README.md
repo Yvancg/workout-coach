@@ -206,70 +206,25 @@ If you prefer not to hardcode the Worker URL in a build, you can leave `VITE_SYN
 
 ## Android Release
 
-For Google Play, use the Capacitor Android shell and ship an Android App Bundle (`.aab`).
+Workout Coach is configured for Google Play with the stable package ID `com.yvan.workoutcoach`, target API 36, environment-driven release versioning, and optional upload-key signing.
 
-Before your first Play upload:
+Normal CI generates a disposable signing key and builds a signed validation AAB. It is not a Play upload artifact.
 
-- keep `appId` in `capacitor.config.json` stable: `com.yvan.workoutcoach`
-- confirm `android/app/build.gradle` has the version you want to ship:
-  - `versionCode` must increase on every Play update
-  - `versionName` is the user-facing version label
-- set production env values before building:
+For a real Google Play build, use the manual `Android Play Release` GitHub Actions workflow after configuring the signing and production environment secrets. The workflow:
 
-```bash
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-public-supabase-anon-key
-VITE_SYNC_API_URL=https://your-worker-url.workers.dev
-```
+- validates the app and Play release configuration
+- restores the permanent upload keystore from GitHub Actions secrets
+- builds the production web app and Capacitor shell
+- builds and verifies the signed AAB
+- exports the public upload certificate
+- stores the signed AAB as a workflow artifact
+- optionally uploads to Google Play internal testing only when explicitly enabled
 
-Prepare the Android project:
+Google Play policy/setup requirements, signing-key instructions, required GitHub secrets, version rules, and the remaining account-deletion/privacy/health declaration gates are documented in:
 
-```bash
-npm run android
-```
+`docs/GOOGLE_PLAY_RELEASE.md`
 
-Build a release bundle:
-
-```bash
-npm run android:bundle
-```
-
-The unsigned release bundle will be created under:
-
-```text
-android/app/build/outputs/bundle/release/
-```
-
-In Android Studio, complete these release-only tasks before Play upload:
-
-- create or import your upload keystore
-- configure release signing for the app module
-- build a signed `bundleRelease`
-- test the signed build on a real device
-
-Recommended Google Play rollout flow:
-
-1. Upload to `Internal testing` first
-2. Test:
-   - Google sign-in
-   - email magic-link sign-in
-   - saving sets locally
-   - synced history after login
-   - voice playback on Android
-3. Only then promote to production
-
-Play Console checklist for this app:
-
-- app icon
-- feature graphic
-- phone screenshots
-- privacy policy URL
-- Data safety form
-- App access explanation if login is required for sync
-- content rating
-- contact email
-
-Because this app stores personal workout history, Android backups are disabled in the manifest by default for better privacy.
+Do not upload the normal CI AAB to Google Play and never commit a permanent keystore to the repository.
 
 ## API Routes
 

@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Android Play readiness
+        run: npm run check:android-release
+
       - name: Web performance budget
         run: npm run check:web-budget
 
@@ -74,13 +77,35 @@ jobs:
       - name: Capacitor Android sync
         run: npx cap sync android
 
-      - name: Android release bundle
+      - name: Generate disposable CI signing key
+        run: |
+          keytool -genkeypair -noprompt \
+            -keystore "$RUNNER_TEMP/workout-coach-ci.jks" \
+            -storepass "ci-only-password" \
+            -keypass "ci-only-password" \
+            -alias "ci-upload" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Workout Coach CI,O=CI,C=US"
+
+      - name: Android signed release bundle validation
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/workout-coach-ci.jks
+          ANDROID_KEYSTORE_PASSWORD: ci-only-password
+          ANDROID_KEY_ALIAS: ci-upload
+          ANDROID_KEY_PASSWORD: ci-only-password
+          ANDROID_VERSION_CODE: "1"
+          ANDROID_VERSION_NAME: "1.0.0"
         run: bash -lc 'cd android && ./gradlew bundleRelease --no-daemon'
 
-      - name: Upload Android release bundle
+      - name: Verify Android bundle signature
+        run: jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload Android CI bundle
         uses: actions/upload-artifact@v4
         with:
-          name: workout-coach-android-aab
+          name: workout-coach-android-ci-aab
           path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
           retention-days: 7

@@ -1,7 +1,7 @@
 {
   "name": "workout-coach",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -20,7 +20,9 @@
     "android": "npm run build && npx cap sync android",
     "android:bundle": "npm run build && npx cap sync android && bash -lc 'cd android && ./gradlew bundleRelease'",
     "test": "node --test tests/*.test.mjs",
-    "test:e2e": "node scripts/e2e-browser.mjs"
+    "test:e2e": "node scripts/e2e-browser.mjs",
+    "check:android-release": "node scripts/check-android-release.mjs",
+    "play:upload-internal": "node scripts/google-play-upload.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",
