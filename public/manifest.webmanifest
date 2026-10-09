@@ -4,8 +4,8 @@
   "description": "Minimal workout tracking with timers, history, and offline support.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f3f4f8",
-  "theme_color": "#11131a",
+  "background_color": "#fcfbf8",
+  "theme_color": "#fcfbf8",
   "orientation": "portrait-primary",
   "icons": [
     {
