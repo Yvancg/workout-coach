@@ -1,6 +1,6 @@
 import { CheckCircle2, ChevronRight, Clock3, Dumbbell, House, Pause, Play, RotateCcw, Save, TimerReset, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Progress } from "./ui";
+import { Button, Card, CardContent, CardHeader, CardTitle, Input, Progress } from "./ui";
 
 function pointOnArc(cx, cy, radius, startAngle, endAngle, progress) {
   const angle = startAngle + (endAngle - startAngle) * progress;
@@ -194,6 +194,8 @@ export function SessionTab({
   currentExercise,
   sessionProgress,
   resolvedCurrentWeight,
+  coachingRecommendation,
+  updateSetFeedback,
   currentExerciseImage,
   repGuideLabel,
   repGuideCountdown,
@@ -314,6 +316,13 @@ export function SessionTab({
               </div>
             </div>
 
+            {coachingRecommendation?.message && (
+              <div className="border-4 border-black rounded-2xl p-3 session-subpanel">
+                <div className="text-sm font-black mb-1">Coach suggestion</div>
+                <div className="text-sm font-bold">{coachingRecommendation.message}</div>
+              </div>
+            )}
+
             <div className="border-4 border-black rounded-2xl p-3">
               <div className="text-sm font-black mb-2">Coaching cues</div>
               <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
@@ -359,6 +368,55 @@ export function SessionTab({
                 </div>
               </PerimeterProgressFrame>
             )}
+
+            <div className="border-4 border-black rounded-3xl p-4 space-y-3">
+              <div className="text-sm font-black">Set result</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-black mb-1">External load, kg total</label>
+                  {/kg/i.test(currentExercise.weight || "") ? (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      inputMode="decimal"
+                      className="border-4 border-black rounded-2xl p-3 text-base font-bold"
+                      value={state.currentLoadKg}
+                      placeholder={String(coachingRecommendation?.recommendedLoadKg || 0)}
+                      onChange={(e) => updateSetFeedback({ currentLoadKg: e.target.value })}
+                    />
+                  ) : (
+                    <div className="border-4 border-black rounded-2xl p-3 text-base font-bold">Bodyweight</div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-black mb-1">Set effort (RPE 1–10)</label>
+                  <select
+                    className="w-full border-4 border-black rounded-2xl p-3 text-base font-bold"
+                    value={state.currentRpe}
+                    onChange={(e) => updateSetFeedback({ currentRpe: Number(e.target.value) })}
+                  >
+                    {[1,2,3,4,5,6,7,8,9,10].map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-black mb-1">{currentExercise.isTime ? "Seconds completed" : "Reps completed"} (optional override)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  className="border-4 border-black rounded-2xl p-3 text-base font-bold"
+                  value={state.completedOverride}
+                  placeholder={String(currentExercise.reps)}
+                  onChange={(e) => updateSetFeedback({ completedOverride: e.target.value })}
+                />
+                <div className="mt-1 text-xs font-semibold">Leave blank to use the guided count, or the planned target when the guide was not used.</div>
+              </div>
+            </div>
 
             <Button className="w-full h-16 text-xl font-black border-4 border-black rounded-2xl session-accent text-white" onClick={completeSet}><Save className="mr-2 h-5 w-5" /> Complete Set and Save</Button>
 
