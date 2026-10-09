@@ -159,6 +159,8 @@ If you use auth locally, the app signs in through Supabase. The fallback bearer 
 
 Before production deployment, verify the D1 binding in `wrangler.toml` and the remotely managed Cloudflare Worker variables, especially the Supabase URL and allowed frontend origins. `keep_vars = true` prevents Wrangler from deleting dashboard-managed variables during deployment.
 
+For Cloudflare Pages, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SYNC_API_URL` for both production and preview deployments. Matching preview variables let PR deployments exercise authentication and remote sync before merge.
+
 Run the production dependency audit and application verification:
 
 ```bash
