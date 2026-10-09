@@ -38,3 +38,8 @@ scripts/.cache/
 *.njsproj
 *.sln
 *.sw?
+
+# Android signing credentials
+*.jks
+*.keystore
+gha-creds-*.json
