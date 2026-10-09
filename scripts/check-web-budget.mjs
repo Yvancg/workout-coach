@@ -1,6 +1,5 @@
 import { gzipSync } from "node:zlib";
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
 
 const DIST_ASSETS = new URL("../dist/assets/", import.meta.url);
 const MAX_SINGLE_JS_GZIP = 100_000;
