@@ -76,9 +76,7 @@ export function useSupabaseAuth() {
       return false;
     }
 
-    const { error } = await supabase.functions.invoke("delete-account", {
-      method: "DELETE",
-    });
+    const { error } = await supabase.functions.invoke("delete-account");
     if (error) {
       setAuthStatus("Could not delete the login account. Please try again.");
       return false;
