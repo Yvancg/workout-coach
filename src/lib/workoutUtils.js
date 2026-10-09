@@ -167,15 +167,31 @@ export function summarizeSessionLogs(logs, sessions) {
           target: log.target,
           isTime: log.isTime,
           totalKg: 0,
+          rpeSum: 0,
+          ratedSets: 0,
+          lastLoadKg: 0,
+          targetTotal: 0,
         };
       }
       acc[key].sets += 1;
       acc[key].completed += Number(log.completed) || 0;
+      acc[key].targetTotal += Number(log.target) || 0;
       acc[key].totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      if (Number(log.effortRpe) > 0) {
+        acc[key].rpeSum += Number(log.effortRpe);
+        acc[key].ratedSets += 1;
+      }
+      if (!acc[key].lastLoadKg && Number(log.actualLoadKg) > 0) {
+        acc[key].lastLoadKg = Number(log.actualLoadKg);
+      }
       return acc;
     }, {});
 
-    const exercises = Object.values(byExercise);
+    const exercises = Object.values(byExercise).map((exercise) => ({
+      ...exercise,
+      avgRpe: exercise.ratedSets ? exercise.rpeSum / exercise.ratedSets : 0,
+      completionRate: exercise.targetTotal > 0 ? exercise.completed / exercise.targetTotal : 1,
+    }));
     return {
       ...session,
       exercises,
@@ -206,7 +222,15 @@ export function summarizeSessionLogs(logs, sessions) {
     if (existing) {
       existing.sets += 1;
       existing.completed += Number(log.completed) || 0;
+      existing.targetTotal = (existing.targetTotal || 0) + (Number(log.target) || 0);
       existing.totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
+      if (Number(log.effortRpe) > 0) {
+        existing.rpeSum = (existing.rpeSum || 0) + Number(log.effortRpe);
+        existing.ratedSets = (existing.ratedSets || 0) + 1;
+        existing.avgRpe = existing.rpeSum / existing.ratedSets;
+      }
+      if (!existing.lastLoadKg && Number(log.actualLoadKg) > 0) existing.lastLoadKg = Number(log.actualLoadKg);
+      existing.completionRate = existing.targetTotal > 0 ? existing.completed / existing.targetTotal : 1;
     } else {
       acc[sessionId].exercises.push({
         exercise: log.exercise,
@@ -215,6 +239,12 @@ export function summarizeSessionLogs(logs, sessions) {
         target: log.target,
         isTime: log.isTime,
         totalKg: (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide)),
+        rpeSum: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
+        ratedSets: Number(log.effortRpe) > 0 ? 1 : 0,
+        avgRpe: Number(log.effortRpe) > 0 ? Number(log.effortRpe) : 0,
+        lastLoadKg: Number(log.actualLoadKg) || 0,
+        targetTotal: Number(log.target) || 0,
+        completionRate: Number(log.target) > 0 ? (Number(log.completed) || 0) / Number(log.target) : 1,
       });
     }
     acc[sessionId].totalKg += (Number(log.completed) || 0) * ((Number(log.actualLoadKg) || 0) || getWeightTotalKg(log.weightGuide));
