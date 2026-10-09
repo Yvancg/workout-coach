@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
 import { BottomNav } from "./components/BottomNav";
@@ -8,10 +8,24 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
-import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
-import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
+import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
+import { useWorkoutSync } from "./hooks/useWorkoutSync";
+import { clearSyncOutbox, createOperationId } from "./lib/syncOutbox";
 import { clearStateBackup } from "./lib/stateBackup";
-import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
+import {
+  getNextStageTransition,
+  getProgramStartPatch,
+  getSessionFinishPatch,
+  getSessionResetPatch,
+  getSessionStartPatch,
+} from "./lib/sessionEngine";
+import {
+  getAvailableVoices,
+  getPreferredVoice,
+  playCountdownBeep,
+  runHaptic,
+  speakWithStyle,
+} from "./lib/workoutAudio";
 import {
   DEFAULT_REST_SECONDS,
   DEFAULT_STATE,
@@ -28,7 +42,6 @@ import {
   getExerciseReferenceImageCandidates,
   getPhaseCue,
   getNextDayType,
-  getSyncApiBase,
   isAlternateExercise,
   loadState,
   resolveWeightGuide,
@@ -36,118 +49,8 @@ import {
   todayDateLabel,
 } from "./lib/workoutUtils";
 
-function getFemaleVoices() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
-
-  const femaleMatcher = /Samantha|Karen|Moira|Tessa|Serena|Ava|Allison|Susan|Victoria|Fiona|Veena|Anna|Zira|Aria|Jenny|Emma|Olivia|Google UK English Female|Google US English Female/i;
-  const maleMatcher = /Daniel|Alex|Guy|David|Thomas|Fred|Junior/i;
-
-  return window.speechSynthesis.getVoices().filter((voice) => (
-    /en-/i.test(voice.lang)
-    && femaleMatcher.test(voice.name)
-    && !maleMatcher.test(voice.name)
-  ));
-}
-
-function getAvailableVoices() {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
-
-  const englishVoices = window.speechSynthesis.getVoices().filter((voice) => /en-/i.test(voice.lang));
-  const preferredVoices = getFemaleVoices();
-  return preferredVoices.length ? preferredVoices : englishVoices;
-}
-
-function getPreferredVoice(selectedVoiceName = "") {
-  const availableVoices = getAvailableVoices();
-  if (selectedVoiceName) {
-    const selectedVoice = availableVoices.find((voice) => voice.name === selectedVoiceName);
-    if (selectedVoice) return selectedVoice;
-  }
-
-  const voiceMatchers = [
-    /Samantha|Karen|Moira|Google UK English Female|Google US English Female|Microsoft Aria|Microsoft Jenny/i,
-    /Google.*English.*Female|Microsoft.*English|Victoria|Fiona|Anna/i,
-  ];
-
-  return voiceMatchers
-    .map((matcher) => availableVoices.find((voice) => matcher.test(voice.name)))
-    .find(Boolean)
-    || availableVoices.find((voice) => !voice.localService)
-    || availableVoices[0]
-    || null;
-}
-
-function speakWithStyle(text, enabled, selectedVoiceName = "") {
-  if (!enabled || typeof window === "undefined" || !("speechSynthesis" in window)) return;
-  if (!text) return;
-
-  const preferredVoice = getPreferredVoice(selectedVoiceName);
-
-  window.speechSynthesis.resume();
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  if (preferredVoice) utterance.voice = preferredVoice;
-  utterance.lang = preferredVoice?.lang || "en-US";
-
-  utterance.rate = 0.92;
-  utterance.pitch = 0.96;
-
-  window.speechSynthesis.speak(utterance);
-}
-
-async function playCountdownBeep(audioContextRef, beep = 880, duration = 0.12) {
-  if (typeof window === "undefined") return;
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
-
-  const context = audioContextRef.current || new AudioContextClass();
-  audioContextRef.current = context;
-  if (context.state === "suspended") {
-    await context.resume().catch(() => {});
-  }
-
-  const oscillator = context.createOscillator();
-  const gainNode = context.createGain();
-  const startTime = context.currentTime + 0.01;
-  const endTime = startTime + duration;
-
-  oscillator.type = "square";
-  oscillator.frequency.setValueAtTime(beep, startTime);
-  gainNode.gain.setValueAtTime(0.0001, startTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.05, startTime + 0.01);
-  gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-
-  oscillator.connect(gainNode);
-  gainNode.connect(context.destination);
-  oscillator.start(startTime);
-  oscillator.stop(endTime);
-  oscillator.onended = () => {
-    oscillator.disconnect();
-    gainNode.disconnect();
-  };
-}
-
 function deferStateUpdate(callback) {
   queueMicrotask(callback);
-}
-
-async function runHaptic(type = "light") {
-  try {
-    const { Haptics, ImpactStyle, NotificationType } = await import("@capacitor/haptics");
-    if (type === "success") {
-      await Haptics.notification({ type: NotificationType.Success });
-      return;
-    }
-
-    await Haptics.impact({
-      style: type === "medium" ? ImpactStyle.Medium : ImpactStyle.Light,
-    });
-  } catch {
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate(type === "success" ? [18, 20, 28] : type === "medium" ? 18 : 10);
-    }
-  }
 }
 
 export default function App() {
@@ -156,13 +59,19 @@ export default function App() {
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authStatus, setAuthStatus] = useState("");
-  const [authSession, setAuthSession] = useState(null);
-  const [syncStatus, setSyncStatus] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const { installApp, installReady } = useInstallPrompt();
+  const {
+    authConfigured,
+    authEmail,
+    authSession,
+    authStatus,
+    setAuthEmail,
+    signInWithGoogle,
+    signInWithMagicLink,
+    signOut: signOutFromAuth,
+  } = useSupabaseAuth();
   const setTimerRef = useRef(null);
   const restTimerRef = useRef(null);
   const repGuideRef = useRef(null);
@@ -199,163 +108,22 @@ export default function App() {
     };
   }, [state.selectedVoiceName, setState]);
 
-  useEffect(() => {
-    if (!supabaseConfigured) return undefined;
-
-    let mounted = true;
-    let subscription = null;
-
-    getSupabase().then((supabase) => {
-      if (!mounted || !supabase) return;
-      supabase.auth.getSession().then(({ data }) => {
-        if (mounted) {
-          setAuthSession(data.session || null);
-        }
-      });
-
-      const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-        setAuthSession(session || null);
-        setAuthStatus("");
-      });
-      subscription = listener.subscription;
-    });
-
-    return () => {
-      mounted = false;
-      subscription?.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    const syncTarget = getSyncApiBase(state.syncApiUrl);
-    if (syncTarget === null) return;
-    if (!authSession?.access_token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadRemoteSnapshot() {
-      try {
-        setSyncStatus("Loading sync...");
-        const historyResult = await loadHistorySummary(state.syncApiUrl, authSession.access_token);
-        if (historyResult.skipped) return;
-        if (cancelled) return;
-        const ownerId = authSession?.user?.id || "";
-        const ownerEmail = authSession?.user?.email || "";
-
-        setState((prev) => ({
-          ...prev,
-          history: [
-            ...(Array.isArray(historyResult.data?.history)
-              ? historyResult.data.history.map((session) => ({ ...session, ownerId, ownerEmail }))
-              : []),
-            ...prev.history.filter((session) => (session.ownerId || session.ownerEmail || "") !== (ownerId || ownerEmail)),
-          ],
-        }));
-        setSyncStatus("Sync connected");
-      } catch (error) {
-        if (cancelled) return;
-        if (error?.status === 429) {
-          setSyncStatus("Sync is temporarily rate limited.");
-          return;
-        }
-        if (error?.status === 401 || error?.status === 403) {
-          setSyncStatus("Supabase login required for sync.");
-          return;
-        }
-        setSyncStatus("Sync unavailable. Local save only.");
-      }
-    }
-
-    loadRemoteSnapshot();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authSession?.access_token, authSession?.user?.email, authSession?.user?.id, state.syncApiUrl, setState]);
-
-  const activeOwnerId = authSession?.user?.id || "";
-  const activeOwnerEmail = authSession?.user?.email || "";
-  const activeOwnerKey = activeOwnerId || activeOwnerEmail;
-  const accessToken = authSession?.access_token || "";
-
-  const flushPendingSync = useCallback(async () => {
-    if (!accessToken) return { synced: 0, pending: 0 };
-    const result = await flushSyncOutbox(
-      (operation) => sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation),
-      { ownerId: activeOwnerId, ownerEmail: activeOwnerEmail },
-    );
-    if (result.pending > 0) {
-      setSyncStatus(`${result.pending} change${result.pending === 1 ? "" : "s"} waiting to sync.`);
-    } else if (result.synced > 0) {
-      setSyncStatus("Synced");
-    }
-    return result;
-  }, [accessToken, activeOwnerEmail, activeOwnerId, state.syncApiUrl]);
-
-  const queueSyncOperation = useCallback(async (operation) => {
-    if (!accessToken) return { queued: false, pending: 0 };
-
-    try {
-      const queuedId = await enqueueSyncOperation({
-        ...operation,
-        ownerId: activeOwnerId,
-        ownerEmail: activeOwnerEmail,
-      });
-      if (!queuedId) {
-        await sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation);
-        setSyncStatus("Synced");
-        return { queued: false, pending: 0 };
-      }
-
-      setSyncStatus("Saved locally. Sync pending...");
-      const result = await flushPendingSync();
-      return { queued: result.pending > 0, pending: result.pending };
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        setSyncStatus("Supabase login required for sync.");
-      } else if (error?.status === 429) {
-        setSyncStatus("Sync is rate limited. Saved locally and queued.");
-      } else {
-        setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
-      }
-      return { queued: true };
-    }
-  }, [accessToken, activeOwnerEmail, activeOwnerId, flushPendingSync, state.syncApiUrl]);
-
-  useEffect(() => {
-    if (!accessToken) return undefined;
-
-    let cancelled = false;
-    const flush = async () => {
-      try {
-        await flushPendingSync();
-      } catch (error) {
-        if (cancelled) return;
-        if (error?.status === 401 || error?.status === 403) {
-          setSyncStatus("Supabase login required for sync.");
-        } else {
-          setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
-        }
-      }
-    };
-
-    flush();
-    const intervalId = window.setInterval(flush, 60_000);
-    window.addEventListener("online", flush);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("online", flush);
-    };
-  }, [accessToken, flushPendingSync]);
-  const entryBelongsToActiveUser = useCallback((entry) => {
-    const entryOwnerId = entry?.ownerId || "";
-    const entryOwnerEmail = entry?.ownerEmail || "";
-    if (activeOwnerKey) return entryOwnerId === activeOwnerId || (!entryOwnerId && entryOwnerEmail === activeOwnerEmail);
-    return !entryOwnerId && !entryOwnerEmail;
-  }, [activeOwnerEmail, activeOwnerId, activeOwnerKey]);
+  const {
+    activeOwnerEmail,
+    activeOwnerId,
+    clearSyncStatus,
+    deleteSessionRemote,
+    displayedSyncStatus,
+    entryBelongsToActiveUser,
+    saveSetLocally,
+    syncConnected,
+    syncSessionToRemote,
+    updateSessionRemote,
+  } = useWorkoutSync({
+    authSession,
+    syncApiUrl: state.syncApiUrl,
+    setState,
+  });
 
   useEffect(() => {
     if (!state.setTimerRunning || state.setDurationRemaining <= 0) return undefined;
@@ -647,11 +415,6 @@ export default function App() {
     : isAlternateExercise(currentExercise?.name || "")
       ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
-  const syncTarget = getSyncApiBase(state.syncApiUrl);
-  const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
-    ? "Login required for sync."
-    : syncStatus;
-  const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
   const authUserEmail = authSession?.user?.email || "";
   const tabs = [
     { id: "today", label: "Setup", icon: House },
@@ -738,113 +501,19 @@ export default function App() {
     return Math.max(1, Math.round((Date.now() - new Date(state.sessionStartedAt).getTime()) / 60000));
   };
 
-  const syncSessionToRemote = async (sessionRecord) => {
-    await queueSyncOperation({
-      id: `session-create:${sessionRecord.sessionId}`,
-      type: "session.create",
-      payload: sessionRecord,
-    });
-  };
-
-  const deleteSessionRemote = async (sessionId) => {
-    await queueSyncOperation({
-      id: `session-delete:${sessionId}`,
-      type: "session.delete",
-      sessionId,
-    });
-    return true;
-  };
-
-  const updateSessionRemote = async (sessionId, sessionPatch) => {
-    await queueSyncOperation({
-      id: createOperationId(`session-update:${sessionId}`),
-      type: "session.update",
-      sessionId,
-      payload: sessionPatch,
-    });
-    return true;
-  };
-
-  const saveSetLocally = async (entry) => {
-    setState((prev) => ({ ...prev, logs: [...prev.logs, entry] }));
-    await queueSyncOperation({
-      id: entry.clientLogId,
-      type: "log.create",
-      payload: entry,
-    });
-  };
-
-  const signInWithMagicLink = async () => {
-    const supabase = await getSupabase();
-    if (!supabase || !authEmail.trim()) {
-      setAuthStatus("Enter your email to receive a magic link.");
-      return;
-    }
-
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-    const { error } = await supabase.auth.signInWithOtp({
-      email: authEmail.trim(),
-      options: { emailRedirectTo: redirectTo },
-    });
-
-    setAuthStatus(error ? error.message : `Magic link sent to ${authEmail.trim()}.`);
-  };
-
-  const signInWithGoogle = async () => {
-    const supabase = await getSupabase();
-    if (!supabase) {
-      setAuthStatus("Supabase auth is not configured.");
-      return;
-    }
-
-    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-
-    if (error) {
-      setAuthStatus(error.message);
-    }
-  };
-
   const signOut = async () => {
-    const supabase = await getSupabase();
-    if (!supabase) return;
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      setAuthStatus(error.message);
-      return;
-    }
-    setSyncStatus("");
-    setAuthStatus("Signed out.");
+    const signedOut = await signOutFromAuth();
+    if (signedOut) clearSyncStatus();
   };
 
   const startSession = () => {
     cancelRepGuideCountdown();
     const sessionOwnerKey = activeOwnerId || activeOwnerEmail || "guest";
     const sessionId = `${sessionOwnerKey}-${Date.now()}`;
-    updateState({
-      sessionStartedAt: new Date().toISOString(),
+    updateState(getSessionStartPatch({
       sessionId,
-      activeTab: "session",
-      sessionStage: "warmup",
-      exerciseIndex: 0,
-      currentSet: 1,
-      currentRep: 0,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      warmupDone: false,
-      stretchDone: false,
-    });
+      startedAt: new Date().toISOString(),
+    }));
     runHaptic("medium");
     speakWithStyle("warm up", state.soundEnabled, state.selectedVoiceName, "warmup");
   };
@@ -852,23 +521,7 @@ export default function App() {
   const beginProgramAfterWarmup = () => {
     cancelRepGuideCountdown();
     const firstExercise = PROGRAMS[state.activeProgram][state.dayType]?.[0];
-    updateState({
-      warmupDone: true,
-      sessionStage: "exercise",
-      exerciseIndex: 0,
-      currentSet: 1,
-      currentRep: 0,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      setDurationRemaining: firstExercise?.isTime ? firstExercise.reps : 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-    });
+    updateState(getProgramStartPatch(firstExercise));
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
 
@@ -891,26 +544,7 @@ export default function App() {
 
     updateState({
       history: [sessionRecord, ...state.history].slice(0, 200),
-      activeTab: "history",
-      sessionStage: "idle",
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      currentRep: 0,
-      currentSet: 1,
-      exerciseIndex: 0,
-      stretchDone: true,
-      sessionStartedAt: null,
-      sessionId: null,
-      warmupDone: false,
-      dayType: getNextDayType(state.dayType),
+      ...getSessionFinishPatch(getNextDayType(state.dayType)),
     });
     syncSessionToRemote(sessionRecord);
     runHaptic("success");
@@ -921,59 +555,19 @@ export default function App() {
     if (!currentExercise) return;
     cancelRepGuideCountdown();
 
-    if (state.currentSet < currentExercise.sets) {
-      updateState({
-        currentSet: state.currentSet + 1,
-        currentRep: 0,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-        setDurationRemaining: currentExercise.isTime ? currentExercise.reps : 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: restSeconds,
-        restTimerRunning: restSeconds > 0,
-        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
-      });
-      return;
-    }
-
-    if (state.exerciseIndex < exercises.length - 1) {
-      const nextExercise = exercises[state.exerciseIndex + 1];
-      updateState({
-        exerciseIndex: state.exerciseIndex + 1,
-        currentSet: 1,
-        currentRep: 0,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-        setDurationRemaining: nextExercise?.isTime ? nextExercise.reps : 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: restSeconds,
-        restTimerRunning: restSeconds > 0,
-        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
-      });
-      speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, state.selectedVoiceName, "set");
-      return;
-    }
-
-    updateState({
-      sessionStage: "stretch",
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
+    const transition = getNextStageTransition({
+      state,
+      currentExercise,
+      exercises,
+      restSeconds,
+      nowMs: Date.now(),
     });
-    speakWithStyle("stretch", state.soundEnabled, state.selectedVoiceName, "stretch");
+    if (!transition) return;
+
+    updateState(transition.patch);
+    if (transition.announcement) {
+      speakWithStyle(transition.announcement, state.soundEnabled, state.selectedVoiceName, "set");
+    }
   };
 
   const completeSet = async () => {
@@ -1010,26 +604,7 @@ export default function App() {
     cancelRepGuideCountdown();
     confirmAction("Reset the full session and clear current progress?", () => {
       runHaptic("light");
-      updateState({
-        exerciseIndex: 0,
-        currentSet: 1,
-        currentRep: 0,
-        setDurationRemaining: 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: 0,
-        restTimerRunning: false,
-        restTimerDeadline: null,
-        warmupDone: false,
-        stretchDone: false,
-        sessionStage: "idle",
-        sessionStartedAt: null,
-        sessionId: null,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-      });
+      updateState(getSessionResetPatch());
     });
   };
 
@@ -1056,7 +631,7 @@ export default function App() {
       });
 
       setState({ ...DEFAULT_STATE });
-      setSyncStatus("");
+      clearSyncStatus();
     });
   };
 
@@ -1201,7 +776,7 @@ export default function App() {
             state={state}
             authEmail={authEmail}
             authUserEmail={authUserEmail}
-            authConfigured={supabaseConfigured}
+            authConfigured={authConfigured}
             authStatus={authStatus}
             installReady={installReady}
             programs={PROGRAMS}
