@@ -143,7 +143,7 @@ export const DEFAULT_STATE = {
   todayNote: "",
   todayReadiness: 3,
   currentLoadKg: "",
-  currentRpe: 7,
+  currentRpe: "",
   completedOverride: "",
   activeTab: "today",
   availableWeights: "1, 2, 3, 4, 5, 6",
