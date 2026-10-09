@@ -3,7 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "DELETE, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, DELETE, OPTIONS",
 };
 
 function json(data: unknown, status = 200) {
@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  if (req.method !== "DELETE") {
+  if (!["POST", "DELETE"].includes(req.method)) {
     return json({ error: "Method not allowed" }, 405);
   }
 
