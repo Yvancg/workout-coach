@@ -13,6 +13,13 @@ import { useWorkoutSync } from "./hooks/useWorkoutSync";
 import { clearSyncOutbox, createOperationId } from "./lib/syncOutbox";
 import { clearStateBackup } from "./lib/stateBackup";
 import {
+  getNextStageTransition,
+  getProgramStartPatch,
+  getSessionFinishPatch,
+  getSessionResetPatch,
+  getSessionStartPatch,
+} from "./lib/sessionEngine";
+import {
   getAvailableVoices,
   getPreferredVoice,
   playCountdownBeep,
@@ -503,27 +510,10 @@ export default function App() {
     cancelRepGuideCountdown();
     const sessionOwnerKey = activeOwnerId || activeOwnerEmail || "guest";
     const sessionId = `${sessionOwnerKey}-${Date.now()}`;
-    updateState({
-      sessionStartedAt: new Date().toISOString(),
+    updateState(getSessionStartPatch({
       sessionId,
-      activeTab: "session",
-      sessionStage: "warmup",
-      exerciseIndex: 0,
-      currentSet: 1,
-      currentRep: 0,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      warmupDone: false,
-      stretchDone: false,
-    });
+      startedAt: new Date().toISOString(),
+    }));
     runHaptic("medium");
     speakWithStyle("warm up", state.soundEnabled, state.selectedVoiceName, "warmup");
   };
@@ -531,23 +521,7 @@ export default function App() {
   const beginProgramAfterWarmup = () => {
     cancelRepGuideCountdown();
     const firstExercise = PROGRAMS[state.activeProgram][state.dayType]?.[0];
-    updateState({
-      warmupDone: true,
-      sessionStage: "exercise",
-      exerciseIndex: 0,
-      currentSet: 1,
-      currentRep: 0,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      setDurationRemaining: firstExercise?.isTime ? firstExercise.reps : 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-    });
+    updateState(getProgramStartPatch(firstExercise));
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
 
@@ -570,26 +544,7 @@ export default function App() {
 
     updateState({
       history: [sessionRecord, ...state.history].slice(0, 200),
-      activeTab: "history",
-      sessionStage: "idle",
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
-      currentRep: 0,
-      currentSet: 1,
-      exerciseIndex: 0,
-      stretchDone: true,
-      sessionStartedAt: null,
-      sessionId: null,
-      warmupDone: false,
-      dayType: getNextDayType(state.dayType),
+      ...getSessionFinishPatch(getNextDayType(state.dayType)),
     });
     syncSessionToRemote(sessionRecord);
     runHaptic("success");
@@ -600,59 +555,19 @@ export default function App() {
     if (!currentExercise) return;
     cancelRepGuideCountdown();
 
-    if (state.currentSet < currentExercise.sets) {
-      updateState({
-        currentSet: state.currentSet + 1,
-        currentRep: 0,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-        setDurationRemaining: currentExercise.isTime ? currentExercise.reps : 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: restSeconds,
-        restTimerRunning: restSeconds > 0,
-        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
-      });
-      return;
-    }
-
-    if (state.exerciseIndex < exercises.length - 1) {
-      const nextExercise = exercises[state.exerciseIndex + 1];
-      updateState({
-        exerciseIndex: state.exerciseIndex + 1,
-        currentSet: 1,
-        currentRep: 0,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-        setDurationRemaining: nextExercise?.isTime ? nextExercise.reps : 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: restSeconds,
-        restTimerRunning: restSeconds > 0,
-        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
-      });
-      speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, state.selectedVoiceName, "set");
-      return;
-    }
-
-    updateState({
-      sessionStage: "stretch",
-      restRemaining: 0,
-      restTimerRunning: false,
-      restTimerDeadline: null,
-      setDurationRemaining: 0,
-      setTimerRunning: false,
-      setTimerDeadline: null,
-      repGuideRunning: false,
-      repGuidePhaseIndex: 0,
-      repGuidePhaseRemaining: 0,
-      repGuideSide: "left",
+    const transition = getNextStageTransition({
+      state,
+      currentExercise,
+      exercises,
+      restSeconds,
+      nowMs: Date.now(),
     });
-    speakWithStyle("stretch", state.soundEnabled, state.selectedVoiceName, "stretch");
+    if (!transition) return;
+
+    updateState(transition.patch);
+    if (transition.announcement) {
+      speakWithStyle(transition.announcement, state.soundEnabled, state.selectedVoiceName, "set");
+    }
   };
 
   const completeSet = async () => {
@@ -689,26 +604,7 @@ export default function App() {
     cancelRepGuideCountdown();
     confirmAction("Reset the full session and clear current progress?", () => {
       runHaptic("light");
-      updateState({
-        exerciseIndex: 0,
-        currentSet: 1,
-        currentRep: 0,
-        setDurationRemaining: 0,
-        setTimerRunning: false,
-        setTimerDeadline: null,
-        restRemaining: 0,
-        restTimerRunning: false,
-        restTimerDeadline: null,
-        warmupDone: false,
-        stretchDone: false,
-        sessionStage: "idle",
-        sessionStartedAt: null,
-        sessionId: null,
-        repGuideRunning: false,
-        repGuidePhaseIndex: 0,
-        repGuidePhaseRemaining: 0,
-        repGuideSide: "left",
-      });
+      updateState(getSessionResetPatch());
     });
   };
 
