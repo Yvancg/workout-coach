@@ -1,4 +1,4 @@
-import { getSyncApiBase, getSyncHeaders } from "./workoutUtils";
+import { getSyncApiBase, getSyncHeaders } from "./workoutUtils.js";
 
 async function fetchSyncJson(path, syncApiUrl, accessToken = "", init = {}) {
   const apiBase = getSyncApiBase(syncApiUrl);
@@ -15,6 +15,8 @@ async function fetchSyncJson(path, syncApiUrl, accessToken = "", init = {}) {
   if (!response.ok) {
     const error = new Error(`Sync request failed: ${path}`);
     error.status = response.status;
+    const retryAfter = response.headers.get("Retry-After");
+    if (retryAfter) error.retryAfter = retryAfter;
     throw error;
   }
 
@@ -37,14 +39,14 @@ export async function createRemoteSession(syncApiUrl, accessToken, sessionRecord
 }
 
 export async function updateRemoteSession(syncApiUrl, accessToken, sessionId, sessionPatch) {
-  return fetchSyncJson(`/api/sessions/${sessionId}`, syncApiUrl, accessToken, {
+  return fetchSyncJson(`/api/sessions/${encodeURIComponent(sessionId)}`, syncApiUrl, accessToken, {
     method: "PATCH",
     body: JSON.stringify(sessionPatch),
   });
 }
 
 export async function deleteRemoteSession(syncApiUrl, accessToken, sessionId) {
-  return fetchSyncJson(`/api/sessions/${sessionId}`, syncApiUrl, accessToken, {
+  return fetchSyncJson(`/api/sessions/${encodeURIComponent(sessionId)}`, syncApiUrl, accessToken, {
     method: "DELETE",
   });
 }
@@ -52,6 +54,26 @@ export async function deleteRemoteSession(syncApiUrl, accessToken, sessionId) {
 export async function createRemoteLog(syncApiUrl, accessToken, entry) {
   return fetchSyncJson("/api/logs", syncApiUrl, accessToken, {
     method: "POST",
+    headers: entry.clientLogId ? { "Idempotency-Key": entry.clientLogId } : undefined,
     body: JSON.stringify(entry),
   });
+}
+
+export async function sendQueuedSyncOperation(syncApiUrl, accessToken, operation) {
+  if (!operation?.type) throw new Error("Invalid queued sync operation");
+
+  if (operation.type === "log.create") {
+    return createRemoteLog(syncApiUrl, accessToken, operation.payload);
+  }
+  if (operation.type === "session.create") {
+    return createRemoteSession(syncApiUrl, accessToken, operation.payload);
+  }
+  if (operation.type === "session.update") {
+    return updateRemoteSession(syncApiUrl, accessToken, operation.sessionId, operation.payload);
+  }
+  if (operation.type === "session.delete") {
+    return deleteRemoteSession(syncApiUrl, accessToken, operation.sessionId);
+  }
+
+  throw new Error(`Unsupported queued sync operation: ${operation.type}`);
 }

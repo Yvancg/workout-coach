@@ -8,7 +8,9 @@ import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
-import { createRemoteLog, createRemoteSession, deleteRemoteSession, loadHistorySummary, updateRemoteSession } from "./lib/syncClient";
+import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
+import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
+import { clearStateBackup } from "./lib/stateBackup";
 import { getSupabase, supabaseConfigured } from "./lib/supabaseClient";
 import {
   DEFAULT_REST_SECONDS,
@@ -149,7 +151,7 @@ async function runHaptic(type = "light") {
 }
 
 export default function App() {
-  const [state, setState] = usePersistentState(STORAGE_KEY, loadState);
+  const [state, setState, storageError] = usePersistentState(STORAGE_KEY, loadState);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
@@ -276,6 +278,78 @@ export default function App() {
   const activeOwnerId = authSession?.user?.id || "";
   const activeOwnerEmail = authSession?.user?.email || "";
   const activeOwnerKey = activeOwnerId || activeOwnerEmail;
+  const accessToken = authSession?.access_token || "";
+
+  const flushPendingSync = useCallback(async () => {
+    if (!accessToken) return { synced: 0, pending: 0 };
+    const result = await flushSyncOutbox(
+      (operation) => sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation),
+      { ownerId: activeOwnerId, ownerEmail: activeOwnerEmail },
+    );
+    if (result.pending > 0) {
+      setSyncStatus(`${result.pending} change${result.pending === 1 ? "" : "s"} waiting to sync.`);
+    } else if (result.synced > 0) {
+      setSyncStatus("Synced");
+    }
+    return result;
+  }, [accessToken, activeOwnerEmail, activeOwnerId, state.syncApiUrl]);
+
+  const queueSyncOperation = useCallback(async (operation) => {
+    if (!accessToken) return { queued: false, pending: 0 };
+
+    try {
+      const queuedId = await enqueueSyncOperation({
+        ...operation,
+        ownerId: activeOwnerId,
+        ownerEmail: activeOwnerEmail,
+      });
+      if (!queuedId) {
+        await sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation);
+        setSyncStatus("Synced");
+        return { queued: false, pending: 0 };
+      }
+
+      setSyncStatus("Saved locally. Sync pending...");
+      const result = await flushPendingSync();
+      return { queued: result.pending > 0, pending: result.pending };
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        setSyncStatus("Supabase login required for sync.");
+      } else if (error?.status === 429) {
+        setSyncStatus("Sync is rate limited. Saved locally and queued.");
+      } else {
+        setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
+      }
+      return { queued: true };
+    }
+  }, [accessToken, activeOwnerEmail, activeOwnerId, flushPendingSync, state.syncApiUrl]);
+
+  useEffect(() => {
+    if (!accessToken) return undefined;
+
+    let cancelled = false;
+    const flush = async () => {
+      try {
+        await flushPendingSync();
+      } catch (error) {
+        if (cancelled) return;
+        if (error?.status === 401 || error?.status === 403) {
+          setSyncStatus("Supabase login required for sync.");
+        } else {
+          setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
+        }
+      }
+    };
+
+    flush();
+    const intervalId = window.setInterval(flush, 60_000);
+    window.addEventListener("online", flush);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("online", flush);
+    };
+  }, [accessToken, flushPendingSync]);
   const entryBelongsToActiveUser = useCallback((entry) => {
     const entryOwnerId = entry?.ownerId || "";
     const entryOwnerEmail = entry?.ownerEmail || "";
@@ -284,34 +358,70 @@ export default function App() {
   }, [activeOwnerEmail, activeOwnerId, activeOwnerKey]);
 
   useEffect(() => {
-    if (state.setTimerRunning && state.setDurationRemaining > 0) {
-      setTimerRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.setDurationRemaining <= 1) {
-            speakWithStyle("time", prev.soundEnabled, prev.selectedVoiceName, prev.sessionStage === "stretch" ? "stretch" : "set");
-            return { ...prev, setDurationRemaining: 0, setTimerRunning: false };
-          }
-          return { ...prev, setDurationRemaining: prev.setDurationRemaining - 1 };
-        });
-      }, 1000);
+    if (!state.setTimerRunning || state.setDurationRemaining <= 0) return undefined;
+
+    if (!state.setTimerDeadline) {
+      setState((prev) => ({
+        ...prev,
+        setTimerDeadline: Date.now() + Math.max(0, prev.setDurationRemaining) * 1000,
+      }));
+      return undefined;
     }
-    return () => clearInterval(setTimerRef.current);
-  }, [state.setTimerRunning, state.setDurationRemaining, state.soundEnabled, setState]);
+
+    const deadline = Number(state.setTimerDeadline);
+    let announced = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remaining === 0 && !announced) {
+        announced = true;
+        speakWithStyle("time", state.soundEnabled, state.selectedVoiceName);
+      }
+      setState((prev) => {
+        if (!prev.setTimerRunning || Number(prev.setTimerDeadline) !== deadline) return prev;
+        if (remaining === 0) {
+          return { ...prev, setDurationRemaining: 0, setTimerRunning: false, setTimerDeadline: null };
+        }
+        return prev.setDurationRemaining === remaining ? prev : { ...prev, setDurationRemaining: remaining };
+      });
+    };
+
+    tick();
+    setTimerRef.current = window.setInterval(tick, 500);
+    return () => window.clearInterval(setTimerRef.current);
+  }, [state.setDurationRemaining, state.setTimerDeadline, state.setTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
-    if (state.restTimerRunning && state.restRemaining > 0) {
-      restTimerRef.current = setInterval(() => {
-        setState((prev) => {
-          if (prev.restRemaining <= 1) {
-            speakWithStyle("rest over", prev.soundEnabled, prev.selectedVoiceName, "set");
-            return { ...prev, restRemaining: 0, restTimerRunning: false };
-          }
-          return { ...prev, restRemaining: prev.restRemaining - 1 };
-        });
-      }, 1000);
+    if (!state.restTimerRunning || state.restRemaining <= 0) return undefined;
+
+    if (!state.restTimerDeadline) {
+      setState((prev) => ({
+        ...prev,
+        restTimerDeadline: Date.now() + Math.max(0, prev.restRemaining) * 1000,
+      }));
+      return undefined;
     }
-    return () => clearInterval(restTimerRef.current);
-  }, [state.restTimerRunning, state.restRemaining, state.soundEnabled, setState]);
+
+    const deadline = Number(state.restTimerDeadline);
+    let announced = false;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (remaining === 0 && !announced) {
+        announced = true;
+        speakWithStyle("rest over", state.soundEnabled, state.selectedVoiceName);
+      }
+      setState((prev) => {
+        if (!prev.restTimerRunning || Number(prev.restTimerDeadline) !== deadline) return prev;
+        if (remaining === 0) {
+          return { ...prev, restRemaining: 0, restTimerRunning: false, restTimerDeadline: null };
+        }
+        return prev.restRemaining === remaining ? prev : { ...prev, restRemaining: remaining };
+      });
+    };
+
+    tick();
+    restTimerRef.current = window.setInterval(tick, 500);
+    return () => window.clearInterval(restTimerRef.current);
+  }, [state.restRemaining, state.restTimerDeadline, state.restTimerRunning, state.soundEnabled, state.selectedVoiceName, setState]);
 
   useEffect(() => {
     if (!state.repGuideRunning || state.sessionStage !== "exercise") return;
@@ -568,7 +678,7 @@ export default function App() {
   };
   const resetRestTimer = () => {
     setState((prev) => (prev.restTimerRunning || prev.restRemaining > 0
-      ? { ...prev, restRemaining: 0, restTimerRunning: false }
+      ? { ...prev, restRemaining: 0, restTimerRunning: false, restTimerDeadline: null }
       : prev));
   };
   const handleTabChange = (tab) => {
@@ -629,58 +739,39 @@ export default function App() {
   };
 
   const syncSessionToRemote = async (sessionRecord) => {
-    if (!authSession?.access_token) return;
-    try {
-      setSyncStatus("Saving session to sync...");
-      const result = await createRemoteSession(state.syncApiUrl, authSession.access_token, sessionRecord);
-      if (result.skipped) return;
-      setSyncStatus("Synced");
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
-    }
+    await queueSyncOperation({
+      id: `session-create:${sessionRecord.sessionId}`,
+      type: "session.create",
+      payload: sessionRecord,
+    });
   };
 
   const deleteSessionRemote = async (sessionId) => {
-    if (!authSession?.access_token) return true;
-    try {
-      setSyncStatus("Deleting session from sync...");
-      const result = await deleteRemoteSession(state.syncApiUrl, authSession.access_token, sessionId);
-      if (result.skipped) return true;
-      setSyncStatus("Session deleted from sync");
-      return true;
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync delete failed. Local session removed.");
-      return false;
-    }
+    await queueSyncOperation({
+      id: `session-delete:${sessionId}`,
+      type: "session.delete",
+      sessionId,
+    });
+    return true;
   };
 
   const updateSessionRemote = async (sessionId, sessionPatch) => {
-    if (!authSession?.access_token) return true;
-    try {
-      setSyncStatus("Updating session in sync...");
-      const result = await updateRemoteSession(state.syncApiUrl, authSession.access_token, sessionId, sessionPatch);
-      if (result.skipped) return true;
-      setSyncStatus("Session updated in sync");
-      return true;
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync update failed. Local session updated.");
-      return false;
-    }
+    await queueSyncOperation({
+      id: createOperationId(`session-update:${sessionId}`),
+      type: "session.update",
+      sessionId,
+      payload: sessionPatch,
+    });
+    return true;
   };
 
   const saveSetLocally = async (entry) => {
-    const nextLogs = [...state.logs, entry];
-    updateState({ logs: nextLogs });
-
-    try {
-      if (!authSession?.access_token) return;
-      setSyncStatus("Saving set to sync...");
-      const result = await createRemoteLog(state.syncApiUrl, authSession.access_token, entry);
-      if (result.skipped) return;
-      setSyncStatus("Synced");
-    } catch (error) {
-      setSyncStatus(error?.status === 429 ? "Sync is temporarily rate limited." : error?.status === 401 || error?.status === 403 ? "Supabase login required for sync." : "Sync failed. Local save only.");
-    }
+    setState((prev) => ({ ...prev, logs: [...prev.logs, entry] }));
+    await queueSyncOperation({
+      id: entry.clientLogId,
+      type: "log.create",
+      payload: entry,
+    });
   };
 
   const signInWithMagicLink = async () => {
@@ -747,8 +838,10 @@ export default function App() {
       repGuideSide: "left",
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       warmupDone: false,
       stretchDone: false,
     });
@@ -771,8 +864,10 @@ export default function App() {
       repGuideSide: "left",
       setDurationRemaining: firstExercise?.isTime ? firstExercise.reps : 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
     });
     speakWithStyle(firstExercise?.name || "begin", state.soundEnabled, state.selectedVoiceName, "set");
   };
@@ -800,8 +895,10 @@ export default function App() {
       sessionStage: "idle",
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       repGuideRunning: false,
       repGuidePhaseIndex: 0,
       repGuidePhaseRemaining: 0,
@@ -834,8 +931,10 @@ export default function App() {
         repGuideSide: "left",
         setDurationRemaining: currentExercise.isTime ? currentExercise.reps : 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
+        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
       });
       return;
     }
@@ -852,8 +951,10 @@ export default function App() {
         repGuideSide: "left",
         setDurationRemaining: nextExercise?.isTime ? nextExercise.reps : 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: restSeconds,
         restTimerRunning: restSeconds > 0,
+        restTimerDeadline: restSeconds > 0 ? Date.now() + restSeconds * 1000 : null,
       });
       speakWithStyle(nextExercise?.name || "continue", state.soundEnabled, state.selectedVoiceName, "set");
       return;
@@ -863,8 +964,10 @@ export default function App() {
       sessionStage: "stretch",
       restRemaining: 0,
       restTimerRunning: false,
+      restTimerDeadline: null,
       setDurationRemaining: 0,
       setTimerRunning: false,
+      setTimerDeadline: null,
       repGuideRunning: false,
       repGuidePhaseIndex: 0,
       repGuidePhaseRemaining: 0,
@@ -876,9 +979,10 @@ export default function App() {
   const completeSet = async () => {
     if (!currentExercise) return;
 
-    const restSeconds = currentExercise.rest || DEFAULT_REST_SECONDS;
+    const restSeconds = currentExercise.rest ?? DEFAULT_REST_SECONDS;
     const completedValue = currentExercise.isTime ? currentExercise.reps : state.currentRep || currentExercise.reps;
     const entry = {
+      clientLogId: createOperationId("log"),
       timestamp: new Date().toISOString(),
       date: todayDateLabel(),
       program: state.activeProgram,
@@ -912,8 +1016,10 @@ export default function App() {
         currentRep: 0,
         setDurationRemaining: 0,
         setTimerRunning: false,
+        setTimerDeadline: null,
         restRemaining: 0,
         restTimerRunning: false,
+        restTimerDeadline: null,
         warmupDone: false,
         stretchDone: false,
         sessionStage: "idle",
@@ -933,8 +1039,22 @@ export default function App() {
   };
 
   const clearAllData = () => {
-    confirmAction("Clear all local workout data from this device?", () => {
-      localStorage.removeItem(STORAGE_KEY);
+    confirmAction("Clear all local workout data from this device?", async () => {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(`${STORAGE_KEY}:savedAt`);
+      } catch (error) {
+        console.error("Could not clear local workout storage.", error);
+      }
+
+      const results = await Promise.allSettled([
+        clearStateBackup(STORAGE_KEY),
+        clearSyncOutbox(),
+      ]);
+      results.filter((result) => result.status === "rejected").forEach((result) => {
+        console.error("Could not clear a local workout data store.", result.reason);
+      });
+
       setState({ ...DEFAULT_STATE });
       setSyncStatus("");
     });
@@ -1013,33 +1133,54 @@ export default function App() {
     if (!currentExercise?.isTime) return;
     resetRestTimer();
     cancelRepGuideCountdown();
-    if (state.setDurationRemaining === 0) {
-      updateState({ setDurationRemaining: currentExercise.reps, setTimerRunning: true });
+
+    if (state.setTimerRunning) {
+      const remaining = state.setTimerDeadline
+        ? Math.max(0, Math.ceil((Number(state.setTimerDeadline) - Date.now()) / 1000))
+        : state.setDurationRemaining;
+      updateState({ setDurationRemaining: remaining, setTimerRunning: false, setTimerDeadline: null });
       return;
     }
-    updateState({ setTimerRunning: !state.setTimerRunning });
+
+    const remaining = state.setDurationRemaining || currentExercise.reps;
+    updateState({
+      setDurationRemaining: remaining,
+      setTimerRunning: true,
+      setTimerDeadline: Date.now() + remaining * 1000,
+    });
   };
 
   const resetSetTimer = () => {
     resetRestTimer();
     cancelRepGuideCountdown();
     confirmAction("Reset this timer back to the full target time?", () => {
-      updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false });
+      updateState({ setDurationRemaining: currentExercise?.reps || 0, setTimerRunning: false, setTimerDeadline: null });
     });
   };
 
   const toggleRestTimer = () => {
     cancelRepGuideCountdown();
-    const restSeconds = currentExercise?.rest || DEFAULT_REST_SECONDS;
+    const restSeconds = currentExercise?.rest ?? DEFAULT_REST_SECONDS;
+
+    if (state.restTimerRunning) {
+      const remaining = state.restTimerDeadline
+        ? Math.max(0, Math.ceil((Number(state.restTimerDeadline) - Date.now()) / 1000))
+        : state.restRemaining;
+      updateState({ restRemaining: remaining, restTimerRunning: false, restTimerDeadline: null });
+      return;
+    }
+
+    const remaining = state.restRemaining || restSeconds;
     updateState({
-      restTimerRunning: !state.restTimerRunning || state.restRemaining === 0,
-      restRemaining: state.restRemaining || restSeconds,
+      restTimerRunning: true,
+      restRemaining: remaining,
+      restTimerDeadline: Date.now() + remaining * 1000,
     });
   };
 
   const skipRest = () => {
     cancelRepGuideCountdown();
-    updateState({ restRemaining: 0, restTimerRunning: false });
+    updateState({ restRemaining: 0, restTimerRunning: false, restTimerDeadline: null });
   };
 
   return (
@@ -1048,6 +1189,12 @@ export default function App() {
         <HeroHeader todayLabel={todayDateLabel()} activeProgram={state.activeProgram} dayType={state.dayType} />
 
         <BottomNav tabs={tabs} activeTab={state.activeTab} onTabChange={handleTabChange} />
+
+        {storageError && (
+          <div role="alert" className="border-4 border-black rounded-2xl p-3 bg-white text-black font-bold">
+            Workout data could not be saved on this device. Keep this screen open and export your history before closing the app.
+          </div>
+        )}
 
         {state.activeTab === "today" && (
           <TodayTab

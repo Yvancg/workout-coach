@@ -1,4 +1,4 @@
-import { DEFAULT_STATE, IMPORTED_IMAGE_EXTENSIONS, REP_PHASES, STORAGE_KEY } from "./workoutData";
+import { DEFAULT_STATE, IMPORTED_IMAGE_EXTENSIONS, REP_PHASES, STORAGE_KEY } from "./workoutData.js";
 
 export function loadState() {
   try {
