@@ -342,7 +342,7 @@ function mapSessionRow(row) {
     setsCompleted: row.sets_completed,
     note: row.note,
     availableWeights: row.available_weights,
-    readiness: Number(row.readiness) || 3,
+    readiness: Number(row.readiness) || 0,
     warmupCompleted: Boolean(row.warmup_completed),
     stretchCompleted: Boolean(row.stretch_completed),
   };
