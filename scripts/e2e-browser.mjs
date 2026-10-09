@@ -353,9 +353,32 @@ async function run() {
     console.log("Browser E2E passed: reload recovery, offline PWA, full workout, history/day rotation, and progression context.");
   } finally {
     try { cdp?.close(); } catch {}
-    chrome?.kill("SIGTERM");
-    preview.kill("SIGTERM");
-    await rm(profileDir, { recursive: true, force: true });
+
+    const stopChild = async (child) => {
+      if (!child || child.exitCode !== null) return;
+      child.kill("SIGTERM");
+      await Promise.race([
+        new Promise((resolve) => child.once("exit", resolve)),
+        new Promise((resolve) => setTimeout(resolve, 2_000)),
+      ]);
+      if (child.exitCode === null) child.kill("SIGKILL");
+    };
+
+    await stopChild(chrome);
+    await stopChild(preview);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(profileDir, { recursive: true, force: true });
+        break;
+      } catch (error) {
+        if (attempt === 4) {
+          console.warn("Could not fully remove temporary Chromium profile:", error.message);
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
   }
 }
 
