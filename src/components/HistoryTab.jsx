@@ -20,7 +20,7 @@ export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistory
                   <div className="history-session-topline">
                     <div>
                       <div className="text-lg font-black">{session.date} • {getProgramDisplayName(session.program)}</div>
-                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets • {Math.round(session.totalCompleted || 0)} reps/sec • {Math.round(session.totalKg || 0)} kg total</div>
+                      <div className="text-sm font-bold">Day {session.dayType} • {session.durationMinutes || "-"} min • {session.setsCompleted} sets • {Math.round(session.totalCompleted || 0)} reps/sec • {Math.round(session.totalKg || 0)} kg volume</div>
                       <div className="text-sm font-bold">Warm up {session.warmupCompleted ? "done" : "not marked"} • Stretch {session.stretchCompleted ? "done" : "not marked"}{session.readiness ? ` • Readiness ${session.readiness}/5` : ""}</div>
                       {session.availableWeights && <div className="text-sm font-bold">Weights: {session.availableWeights}</div>}
                       {session.note && <div className="text-sm font-bold">Note: {session.note}</div>}
@@ -42,7 +42,7 @@ export function HistoryTab({ sessionSummaries, openHistoryMenuId, setOpenHistory
                   {session.exercises.map((exercise) => (
                     <div key={`${session.sessionId}-${exercise.exercise}`} className="history-exercise-row">
                       <div className="text-base font-black">{exercise.exercise}</div>
-                      <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"} • {Math.round(exercise.totalKg || 0)} kg{exercise.avgRpe ? ` • avg RPE ${Number(exercise.avgRpe).toFixed(1)}` : ""}{exercise.lastLoadKg ? ` • last load ${exercise.lastLoadKg} kg` : ""}</div>
+                      <div className="text-sm font-bold">{exercise.sets} x {exercise.target} {exercise.isTime ? "sec" : "reps"}{exercise.isTime ? "" : ` • ${Math.round(exercise.totalKg || 0)} kg volume`}{exercise.avgRpe ? ` • avg RPE ${Number(exercise.avgRpe).toFixed(1)}` : ""}{exercise.lastLoadKg ? ` • last load ${exercise.lastLoadKg} kg` : ""}</div>
                     </div>
                   ))}
                 </div>
