@@ -123,3 +123,36 @@ test("RPE and actual load normalization are bounded", () => {
   assert.equal(normalizeActualLoadKg("5.26"), 5.3);
   assert.equal(normalizeActualLoadKg(-1), 0);
 });
+
+
+test("optional bodyweight exercises begin unloaded and add only the first load step", () => {
+  const exercise = { name: "Calf Raise", weight: "Bodyweight or 4-8 kg total", reps: 15 };
+  const first = getCoachingRecommendation({
+    exercise,
+    program: "General 1-6kg",
+    dayType: "B",
+    availableWeightsInput: weights,
+    readiness: 3,
+  });
+  assert.equal(first.recommendedLoadKg, 0);
+
+  const progressed = getCoachingRecommendation({
+    exercise,
+    program: "General 1-6kg",
+    dayType: "B",
+    availableWeightsInput: weights,
+    readiness: 4,
+    logs: [{
+      timestamp: "2026-10-01T10:00:00Z",
+      sessionId: "old",
+      program: "General 1-6kg",
+      dayType: "B",
+      exercise: "Calf Raise",
+      target: 15,
+      completed: 15,
+      effortRpe: 6,
+      actualLoadKg: 0,
+    }],
+  });
+  assert.equal(progressed.recommendedLoadKg, 2);
+});
