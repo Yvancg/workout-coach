@@ -1,4 +1,5 @@
 import { ArrowUpRight, Download, Play, Volume2, VolumeX } from "lucide-react";
+import { getProgramDisplayName } from "../lib/workoutData";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
@@ -74,7 +75,7 @@ export function TodayTab({
               onChange={(e) => updateState({ activeProgram: e.target.value, exerciseIndex: 0, currentSet: 1, currentRep: 0 })}
             >
               {Object.keys(programs).map((program) => (
-                <option key={program} value={program}>{program}</option>
+                <option key={program} value={program}>{programs[program].displayName || program}</option>
               ))}
             </select>
             <p className="mt-2 text-sm font-bold">{currentProgramMeta.description}</p>
@@ -99,6 +100,22 @@ export function TodayTab({
             <label className="block text-sm font-black mb-1">Available dumbbells today</label>
             <Input className="border-4 border-black rounded-2xl p-3 text-sm font-semibold" placeholder="Example: 1, 2, 3, 4, 5, 6" value={state.availableWeights} onChange={(e) => updateState({ availableWeights: e.target.value })} />
             <p className="mt-1 text-xs font-semibold">Enter each dumbbell weight in kg. Exercise suggestions will use this list.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-black mb-1">Training readiness today</label>
+            <select
+              className="w-full border-4 border-black rounded-2xl p-3 text-sm font-bold"
+              value={state.todayReadiness}
+              onChange={(e) => updateState({ todayReadiness: Number(e.target.value) })}
+            >
+              <option value={1}>1 - Very low: keep it easy</option>
+              <option value={2}>2 - Low: reduce intensity</option>
+              <option value={3}>3 - Normal</option>
+              <option value={4}>4 - Good</option>
+              <option value={5}>5 - Strong</option>
+            </select>
+            <p className="mt-1 text-xs font-semibold">Used only to adjust today&apos;s load suggestion. It does not change your program automatically.</p>
           </div>
 
           <div>
@@ -158,7 +175,7 @@ export function TodayTab({
             <div className="border-4 border-black rounded-2xl p-3 bg-white text-black today-subpanel">
               <div className="text-sm font-black">Last session</div>
               <div className="text-lg font-black mt-1">{latestSession ? `${latestSession.durationMinutes} min` : "No history yet"}</div>
-              <div className="text-sm font-semibold">{latestSession ? `${latestSession.program} - Day ${latestSession.dayType}` : "Complete a session to build your log."}</div>
+              <div className="text-sm font-semibold">{latestSession ? `${getProgramDisplayName(latestSession.program)} - Day ${latestSession.dayType}` : "Complete a session to build your log."}</div>
             </div>
           </div>
           <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={() => updateState({ activeTab: "session" })}>
