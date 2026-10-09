@@ -848,7 +848,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
+    <main id="main-content" className={`app-shell ${activeThemeClass} min-h-screen bg-white text-black p-3 sm:p-6`}>
       <div className="app-stack max-w-md mx-auto space-y-4 pb-24">
         <HeroHeader todayLabel={todayDateLabel()} activeProgram={currentProgramName} dayType={state.dayType} />
 
@@ -935,6 +935,6 @@ export default function App() {
           />
         )}
       </div>
-    </div>
+    </main>
   );
 }
