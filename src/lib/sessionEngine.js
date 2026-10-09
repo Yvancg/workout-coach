@@ -127,6 +127,9 @@ export function getSessionFinishPatch(nextDayType) {
     sessionStartedAt: null,
     sessionId: null,
     warmupDone: false,
+    currentLoadKg: "",
+    currentRpe: 7,
+    completedOverride: "",
     dayType: nextDayType,
   };
 }
@@ -144,5 +147,8 @@ export function getSessionResetPatch() {
     sessionStage: "idle",
     sessionStartedAt: null,
     sessionId: null,
+    currentLoadKg: "",
+    currentRpe: 7,
+    completedOverride: "",
   };
 }
