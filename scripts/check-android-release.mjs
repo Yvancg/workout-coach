@@ -47,6 +47,12 @@ assert(privacyPolicy.includes("Workout Coach Privacy Policy") && privacyPolicy.i
 assert(deletionPage.includes("Delete your Workout Coach account") && deletionPage.includes("/delete-account"), "Public external account-deletion instructions are missing.");
 assert(todayTab.includes("Delete account and synced data") && todayTab.includes("/privacy.html"), "In-app privacy/account-deletion controls are missing.");
 assert(workerSource.includes('url.pathname === "/api/account"') && workerSource.includes("DELETE FROM workout_logs"), "Authenticated D1 account deletion endpoint is missing.");
-assert(deleteFunction.includes("auth.admin.deleteUser") && deleteFunction.includes('req.method !== "DELETE"'), "Supabase Auth deletion function is missing or unsafe.");
+assert(
+  deleteFunction.includes("auth.admin.deleteUser")
+    && deleteFunction.includes("SUPABASE_SERVICE_ROLE_KEY")
+    && deleteFunction.includes('["POST", "DELETE"].includes(req.method)')
+    && deleteFunction.includes("auth.getUser(token)"),
+  "Supabase Auth deletion function is missing or unsafe.",
+);
 
 console.log(`Android Play readiness passed: ${capacitorConfig.appId}, version ${pkg.version}, target API ${targetSdk}, permissions: INTERNET only.`);
