@@ -19,7 +19,8 @@
     "cap:android": "npx cap open android",
     "android": "npm run build && npx cap sync android",
     "android:bundle": "npm run build && npx cap sync android && bash -lc 'cd android && ./gradlew bundleRelease'",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node scripts/e2e-browser.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

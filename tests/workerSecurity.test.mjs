@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 
 import worker, {
   boundedText,
@@ -120,4 +121,117 @@ test("unexpected Worker failures do not expose internal exception text", async (
 
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), { error: "Internal server error" });
+});
+
+
+test("valid Supabase JWT resolves identity without using the admin fallback", async () => {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = "phase6-key";
+  jwk.alg = "RS256";
+  jwk.use = "sig";
+
+  const issuer = "https://phase6.supabase.co/auth/v1";
+  const token = await new SignJWT({ email: "phase6@example.com" })
+    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
+    .setSubject("user-phase6")
+    .setIssuer(issuer)
+    .setAudience("authenticated")
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === `${issuer}/.well-known/jwks.json`) {
+      return new Response(JSON.stringify({ keys: [jwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return originalFetch(input);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://api.example/api/whoami", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Origin: "https://workout-coach.pages.dev",
+      },
+    }), {
+      SUPABASE_URL: "https://phase6.supabase.co",
+      SUPABASE_JWT_AUDIENCE: "authenticated",
+      ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
+    }, { waitUntil() {} });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      authenticated: true,
+      userId: "user-phase6",
+      email: "phase6@example.com",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("expired Supabase JWT is rejected as 401 instead of a server error", async () => {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = "expired-key";
+  jwk.alg = "RS256";
+  jwk.use = "sig";
+
+  const issuer = "https://expired.supabase.co/auth/v1";
+  const token = await new SignJWT({ email: "expired@example.com" })
+    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
+    .setSubject("expired-user")
+    .setIssuer(issuer)
+    .setAudience("authenticated")
+    .setIssuedAt(Math.floor(Date.now() / 1000) - 120)
+    .setExpirationTime(Math.floor(Date.now() / 1000) - 60)
+    .sign(privateKey);
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === `${issuer}/.well-known/jwks.json`) {
+      return new Response(JSON.stringify({ keys: [jwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return originalFetch(input);
+  };
+
+  try {
+    const response = await worker.fetch(new Request("https://api.example/api/whoami", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Origin: "https://workout-coach.pages.dev",
+      },
+    }), {
+      SUPABASE_URL: "https://expired.supabase.co",
+      SUPABASE_JWT_AUDIENCE: "authenticated",
+      ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
+    }, { waitUntil() {} });
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "Invalid or expired login" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("missing authentication is rejected before protected API access", async () => {
+  const response = await worker.fetch(new Request("https://api.example/api/whoami", {
+    headers: { Origin: "https://workout-coach.pages.dev" },
+  }), {
+    SUPABASE_URL: "https://phase6.supabase.co",
+    ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
+  }, { waitUntil() {} });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Login required" });
 });
