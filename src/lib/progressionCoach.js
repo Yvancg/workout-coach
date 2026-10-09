@@ -181,8 +181,10 @@ export function getCoachingRecommendation({
     return bodyweightRecommendation({ exercise, performance, readiness: Number(readiness) || 3 });
   }
 
-  const baseLoad = getBaseRecommendedLoadKg(exercise, availableWeightsInput) || options[0];
-  const previousLoad = performance?.lastLoadKg || baseLoad;
+  const resolvedBaseLoad = getBaseRecommendedLoadKg(exercise, availableWeightsInput);
+  const optionalBodyweight = /bodyweight\s+or/i.test(exercise.weight || "");
+  const baseLoad = resolvedBaseLoad > 0 || optionalBodyweight ? resolvedBaseLoad : options[0];
+  const previousLoad = performance?.lastLoadKg > 0 ? performance.lastLoadKg : baseLoad;
   const normalizedReadiness = Number(readiness) || 3;
 
   if (normalizedReadiness <= 2) {
@@ -195,7 +197,6 @@ export function getCoachingRecommendation({
   }
 
   if (!performance) {
-    const optionalBodyweight = /bodyweight\s+or/i.test(exercise.weight || "");
     return {
       recommendedLoadKg: baseLoad,
       action: "start",
