@@ -12,7 +12,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +41,9 @@ jobs:
       - name: Web performance budget
         run: npm run check:web-budget
 
+      - name: Browser E2E
+        run: npm run test:e2e
+
       - name: Apply D1 migrations locally
         run: npx wrangler d1 migrations apply workout_coach --local
 
@@ -61,5 +64,23 @@ jobs:
           echo
           echo "__WORKOUT_WORKER_BUNDLE_END__"
 
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
       - name: Capacitor Android sync
         run: npx cap sync android
+
+      - name: Android release bundle
+        run: bash -lc 'cd android && ./gradlew bundleRelease --no-daemon'
+
+      - name: Upload Android release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: workout-coach-android-aab
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 7
