@@ -117,7 +117,7 @@
 
 .tab-bar-mobile {
   position: sticky;
-  bottom: 1rem;
+  bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: 5;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -416,6 +416,12 @@
 
 .history-menu-item:hover {
   background: rgba(0, 0, 0, 0.04);
+}
+
+.history-menu-trigger:focus-visible,
+.history-menu-item:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px rgba(255, 155, 66, 0.24);
 }
 
 .history-menu-danger {
@@ -832,4 +838,11 @@ iframe {
   .ui-button.text-lg { font-size: 1.02rem; }
   .ui-button.text-xl { font-size: 1.08rem; }
   .ui-button.text-2xl { font-size: 1.16rem; }
+}
+
+
+@supports (padding: max(0px)) {
+  .app-shell {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 }

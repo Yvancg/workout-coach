@@ -243,7 +243,7 @@ export function SessionTab({
             </div>
             <div className="status-pill session-accent text-white">{Math.round(sessionProgress)}% done</div>
           </div>
-          <Progress value={sessionProgress} className="h-4 border-2 border-black" />
+          <Progress value={sessionProgress} aria-label="Session completion" className="h-4 border-2 border-black" />
           <div className="space-y-2 compact-list">
             <div className={`border-4 rounded-2xl p-3 ${state.sessionStage === "warmup" || state.sessionStage === "idle" ? "border-black session-accent text-white" : "border-black bg-white text-black session-subpanel"}`}>
               <div className="text-lg font-black">Warm Up</div>
@@ -326,7 +326,7 @@ export function SessionTab({
             <div className="border-4 border-black rounded-2xl p-3">
               <div className="text-sm font-black mb-2">Coaching cues</div>
               <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
-                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} onError={onExerciseImageError} />
+                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} decoding="async" onError={onExerciseImageError} />
               </div>
               <ul className="space-y-1">
                 {currentExercise.cues?.map((cue) => (
@@ -431,7 +431,7 @@ export function SessionTab({
                </div>
 
             {syncStatus && (
-              <div className="sync-indicator-row session-sync-row">
+              <div className="sync-indicator-row session-sync-row" role="status" aria-live="polite">
                 <div className={`sync-indicator-dot ${syncConnected ? "sync-indicator-live" : "sync-indicator-warning"}`} />
                 <div className="text-sm font-black">{syncStatus}</div>
               </div>

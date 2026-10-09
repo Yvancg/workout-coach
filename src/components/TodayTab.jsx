@@ -58,7 +58,7 @@ export function TodayTab({
               <Button className="w-full h-14 text-base font-black border-4 border-black rounded-2xl bg-white text-black" onClick={signOut}>Sign out</Button>
             </>
           )}
-          {authStatus && <div className="text-xs font-semibold">{authStatus}</div>}
+          {authStatus && <div className="text-xs font-semibold" role="status" aria-live="polite">{authStatus}</div>}
         </CardContent>
       </Card>
 
@@ -150,7 +150,7 @@ export function TodayTab({
             <div className="text-xs font-semibold">No selectable system voices found on this device.</div>
           )}
 
-          <div className="sync-indicator-row sync-indicator-row-centered">
+          <div className="sync-indicator-row sync-indicator-row-centered" role="status" aria-live="polite">
             <div className={`sync-indicator-dot ${syncIndicatorClass}`} />
             <div className="text-sm font-bold text-center">{syncModeLabel}</div>
           </div>

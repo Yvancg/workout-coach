@@ -14,9 +14,9 @@ export function CardContent({ className = "", children, ...props }) {
   return <div className={`section-content ${className}`.trim()} {...props}>{children}</div>;
 }
 
-export function Button({ className = "", children, ...props }) {
+export function Button({ className = "", children, type = "button", ...props }) {
   return (
-    <button className={`ui-button ${className}`.trim()} {...props}>
+    <button type={type} className={`ui-button ${className}`.trim()} {...props}>
       {children}
     </button>
   );
@@ -26,10 +26,19 @@ export function Input({ className = "", ...props }) {
   return <input className={`ui-input ${className}`.trim()} {...props} />;
 }
 
-export function Progress({ value = 0, className = "", ...props }) {
+export function Progress({ value = 0, className = "", "aria-label": ariaLabel = "Workout progress", ...props }) {
+  const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
   return (
-    <div className={`progress-track ${className}`.trim()} {...props}>
-      <div className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+    <div
+      className={`progress-track ${className}`.trim()}
+      role="progressbar"
+      aria-label={ariaLabel}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(safeValue)}
+      {...props}
+    >
+      <div className="progress-fill" style={{ width: `${safeValue}%` }} />
     </div>
   );
 }
