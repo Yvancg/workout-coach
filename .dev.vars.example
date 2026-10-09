@@ -1,4 +1,4 @@
-ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost
+ALLOWED_ORIGINS=https://workout-coach.pages.dev,https://*.workout-coach.pages.dev,http://localhost:5173,http://127.0.0.1:5173,https://localhost,capacitor://localhost
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_JWT_AUDIENCE=authenticated
 ADMIN_FALLBACK_OWNER_EMAIL=you@example.com
