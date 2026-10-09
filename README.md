@@ -226,6 +226,12 @@ Google Play policy/setup requirements, signing-key instructions, required GitHub
 
 Do not upload the normal CI AAB to Google Play and never commit a permanent keystore to the repository.
 
+Play policy URLs:
+
+- Privacy policy: `https://workout-coach.pages.dev/privacy.html`
+- Account deletion information: `https://workout-coach.pages.dev/delete-account.html`
+- Secure deletion flow: `https://workout-coach.pages.dev/delete-account`
+
 ## API Routes
 
 - `GET /api/health`
