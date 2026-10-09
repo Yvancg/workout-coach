@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:web-budget": "node scripts/check-web-budget.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "cf:dev": "wrangler dev worker/src/index.js",
