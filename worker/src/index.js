@@ -485,7 +485,7 @@ async function handleHistorySummary(env, identity) {
     exercise.sets += 1;
     exercise.completed += completed;
     exercise.targetTotal += Number(row.target) || 0;
-    exercise.totalKg += completed * (actualLoadKg || getWeightTotalKg(row.weight_guide));
+    exercise.totalKg += row.is_time ? 0 : completed * (actualLoadKg || getWeightTotalKg(row.weight_guide));
     if (effortRpe > 0) {
       exercise.rpeSum += effortRpe;
       exercise.ratedSets += 1;
