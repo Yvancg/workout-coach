@@ -21,6 +21,7 @@ export function getExerciseLoadOptionsKg(exercise, availableWeightsInput) {
 
 export function getBaseRecommendedLoadKg(exercise, availableWeightsInput) {
   if (!exercise) return 0;
+  if (/bodyweight\s+or/i.test(exercise.weight || "")) return 0;
   const resolved = resolveWeightGuide(exercise.weight || "", availableWeightsInput, exercise.loadMode || "pair");
   return roundLoad(getWeightTotalKg(resolved));
 }
@@ -34,7 +35,8 @@ function nearestIndex(options, value) {
 
 function stepLoad(options, currentLoad, direction) {
   if (!options.length) return 0;
-  const currentIndex = nearestIndex(options, currentLoad || options[0]);
+  if (!(currentLoad > 0)) return direction > 0 ? options[0] : 0;
+  const currentIndex = nearestIndex(options, currentLoad);
   const nextIndex = Math.max(0, Math.min(options.length - 1, currentIndex + direction));
   return options[nextIndex];
 }
@@ -193,10 +195,13 @@ export function getCoachingRecommendation({
   }
 
   if (!performance) {
+    const optionalBodyweight = /bodyweight\s+or/i.test(exercise.weight || "");
     return {
       recommendedLoadKg: baseLoad,
       action: "start",
-      message: `Start around ${baseLoad} kg total and aim to finish the set near RPE 7–8. Log the actual load and effort for the next recommendation.`,
+      message: optionalBodyweight
+        ? "Start with bodyweight and rate the set effort. Add external load only after the planned work feels comfortably controlled."
+        : `Start around ${baseLoad} kg total and aim to finish the set near RPE 7–8. Log the actual load and effort for the next recommendation.`,
     };
   }
 
