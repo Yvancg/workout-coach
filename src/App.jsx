@@ -734,12 +734,20 @@ export default function App() {
     const nextWeights = window.prompt("Update available weights", session.availableWeights || "");
     if (nextWeights === null) return;
 
+    const readinessInput = window.prompt("Update training readiness (1-5)", session.readiness ? String(session.readiness) : "");
+    if (readinessInput === null) return;
+    const readinessNumber = Number.parseInt(readinessInput, 10);
+    const nextReadiness = Number.isFinite(readinessNumber)
+      ? Math.max(1, Math.min(5, readinessNumber))
+      : Number(session.readiness) || 0;
+
     const nextWarmup = window.confirm("Mark warm up as completed? Click Cancel for not completed.");
     const nextStretch = window.confirm("Mark stretch as completed? Click Cancel for not completed.");
 
     const patch = {
       note: nextNote,
       availableWeights: nextWeights,
+      readiness: nextReadiness,
       warmupCompleted: nextWarmup,
       stretchCompleted: nextStretch,
     };
