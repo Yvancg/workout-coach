@@ -227,6 +227,11 @@ async function run() {
       fail("Public account deletion instructions are unavailable.");
     }
 
+    const secureDeletionRoute = await evaluate(`fetch("/delete-account").then(async (response) => ({ ok: response.ok, text: await response.text() }))`);
+    if (!secureDeletionRoute.ok || !secureDeletionRoute.text.includes('id="root"')) {
+      fail("Secure account-deletion SPA route is unavailable.");
+    }
+
     const manifest = await evaluate('fetch("/manifest.webmanifest").then((r) => r.json())');
     if (manifest.display !== "standalone" || manifest.start_url !== "/") fail("PWA manifest is not installable as expected.");
     if (manifest.theme_color !== "#fcfbf8") fail("PWA manifest theme color does not match the application.");
