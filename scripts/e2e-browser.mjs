@@ -277,7 +277,7 @@ async function run() {
     await waitForState((state) => state.logs.length >= 1 && state.sessionStage === "exercise", "Offline reload lost workout state.");
 
     const cachesAvailable = await evaluate('caches.keys().then((keys) => keys.some((key) => key.startsWith("workout-coach-")))');
-    if (!cachesAvaile) fail("PWA runtime cache was not created.");
+    if (!cachesAvailable) fail("PWA runtime cache was not created.");
 
     await cdp.send("Network.emulateNetworkConditions", {
       offline: false,
