@@ -55,13 +55,17 @@ cp .dev.vars.example .dev.vars
 
 Set `ALLOWED_ORIGINS` and the Supabase values in `.dev.vars` for local development. Production Worker variables are managed in Cloudflare. `wrangler.toml` uses `keep_vars = true` so deploys preserve those remotely managed values.
 
+`ALLOWED_ORIGINS` accepts exact origins and a restricted HTTPS subdomain wildcard such as `https://*.workout-coach.pages.dev`. The wildcard matches exactly one hostname label, allowing Cloudflare Pages preview/branch URLs without allowing arbitrary nested or lookalike domains.
+
 5. Create a Supabase project and enable email magic-link auth.
 
 In Supabase:
 
 - create a project
 - enable Email auth with magic links or OTP
-- copy the project URL and anon key
+- set the production Site URL to the exact production app URL
+- add redirect URLs for local/native development and, if preview authentication is required, a preview wildcard such as `https://**.workout-coach.pages.dev/**`
+- copy the project URL and publishable key
 
 6. Keep an admin fallback token only for scripts or emergency access:
 
@@ -159,7 +163,7 @@ If you use auth locally, the app signs in through Supabase. The fallback bearer 
 
 Before production deployment, verify the D1 binding in `wrangler.toml` and the remotely managed Cloudflare Worker variables, especially the Supabase URL and allowed frontend origins. `keep_vars = true` prevents Wrangler from deleting dashboard-managed variables during deployment.
 
-For Cloudflare Pages, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SYNC_API_URL` for both production and preview deployments. Matching preview variables let PR deployments exercise authentication and remote sync before merge.
+For Cloudflare Pages, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SYNC_API_URL` for both production and preview deployments. Matching preview variables let PR deployments exercise authentication and remote sync before merge. Keep the production Supabase redirect URL exact; use a wildcard only for preview URLs that need authentication.
 
 Run the production dependency audit and application verification:
 
