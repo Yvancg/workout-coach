@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, History, House } from "lucide-react";
 import "./App.css";
 import { BottomNav } from "./components/BottomNav";
@@ -9,8 +9,8 @@ import { TodayTab } from "./components/TodayTab";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
-import { loadHistorySummary, sendQueuedSyncOperation } from "./lib/syncClient";
-import { clearSyncOutbox, createOperationId, enqueueSyncOperation, flushSyncOutbox } from "./lib/syncOutbox";
+import { useWorkoutSync } from "./hooks/useWorkoutSync";
+import { clearSyncOutbox, createOperationId } from "./lib/syncOutbox";
 import { clearStateBackup } from "./lib/stateBackup";
 import {
   getAvailableVoices,
@@ -35,7 +35,6 @@ import {
   getExerciseReferenceImageCandidates,
   getPhaseCue,
   getNextDayType,
-  getSyncApiBase,
   isAlternateExercise,
   loadState,
   resolveWeightGuide,
@@ -53,7 +52,6 @@ export default function App() {
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
-  const [syncStatus, setSyncStatus] = useState("");
   const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const { installApp, installReady } = useInstallPrompt();
@@ -103,136 +101,22 @@ export default function App() {
     };
   }, [state.selectedVoiceName, setState]);
 
-  useEffect(() => {
-    const syncTarget = getSyncApiBase(state.syncApiUrl);
-    if (syncTarget === null) return;
-    if (!authSession?.access_token) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadRemoteSnapshot() {
-      try {
-        setSyncStatus("Loading sync...");
-        const historyResult = await loadHistorySummary(state.syncApiUrl, authSession.access_token);
-        if (historyResult.skipped) return;
-        if (cancelled) return;
-        const ownerId = authSession?.user?.id || "";
-        const ownerEmail = authSession?.user?.email || "";
-
-        setState((prev) => ({
-          ...prev,
-          history: [
-            ...(Array.isArray(historyResult.data?.history)
-              ? historyResult.data.history.map((session) => ({ ...session, ownerId, ownerEmail }))
-              : []),
-            ...prev.history.filter((session) => (session.ownerId || session.ownerEmail || "") !== (ownerId || ownerEmail)),
-          ],
-        }));
-        setSyncStatus("Sync connected");
-      } catch (error) {
-        if (cancelled) return;
-        if (error?.status === 429) {
-          setSyncStatus("Sync is temporarily rate limited.");
-          return;
-        }
-        if (error?.status === 401 || error?.status === 403) {
-          setSyncStatus("Supabase login required for sync.");
-          return;
-        }
-        setSyncStatus("Sync unavailable. Local save only.");
-      }
-    }
-
-    loadRemoteSnapshot();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authSession?.access_token, authSession?.user?.email, authSession?.user?.id, state.syncApiUrl, setState]);
-
-  const activeOwnerId = authSession?.user?.id || "";
-  const activeOwnerEmail = authSession?.user?.email || "";
-  const activeOwnerKey = activeOwnerId || activeOwnerEmail;
-  const accessToken = authSession?.access_token || "";
-
-  const flushPendingSync = useCallback(async () => {
-    if (!accessToken) return { synced: 0, pending: 0 };
-    const result = await flushSyncOutbox(
-      (operation) => sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation),
-      { ownerId: activeOwnerId, ownerEmail: activeOwnerEmail },
-    );
-    if (result.pending > 0) {
-      setSyncStatus(`${result.pending} change${result.pending === 1 ? "" : "s"} waiting to sync.`);
-    } else if (result.synced > 0) {
-      setSyncStatus("Synced");
-    }
-    return result;
-  }, [accessToken, activeOwnerEmail, activeOwnerId, state.syncApiUrl]);
-
-  const queueSyncOperation = useCallback(async (operation) => {
-    if (!accessToken) return { queued: false, pending: 0 };
-
-    try {
-      const queuedId = await enqueueSyncOperation({
-        ...operation,
-        ownerId: activeOwnerId,
-        ownerEmail: activeOwnerEmail,
-      });
-      if (!queuedId) {
-        await sendQueuedSyncOperation(state.syncApiUrl, accessToken, operation);
-        setSyncStatus("Synced");
-        return { queued: false, pending: 0 };
-      }
-
-      setSyncStatus("Saved locally. Sync pending...");
-      const result = await flushPendingSync();
-      return { queued: result.pending > 0, pending: result.pending };
-    } catch (error) {
-      if (error?.status === 401 || error?.status === 403) {
-        setSyncStatus("Supabase login required for sync.");
-      } else if (error?.status === 429) {
-        setSyncStatus("Sync is rate limited. Saved locally and queued.");
-      } else {
-        setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
-      }
-      return { queued: true };
-    }
-  }, [accessToken, activeOwnerEmail, activeOwnerId, flushPendingSync, state.syncApiUrl]);
-
-  useEffect(() => {
-    if (!accessToken) return undefined;
-
-    let cancelled = false;
-    const flush = async () => {
-      try {
-        await flushPendingSync();
-      } catch (error) {
-        if (cancelled) return;
-        if (error?.status === 401 || error?.status === 403) {
-          setSyncStatus("Supabase login required for sync.");
-        } else {
-          setSyncStatus("Offline or sync unavailable. Saved locally and queued.");
-        }
-      }
-    };
-
-    flush();
-    const intervalId = window.setInterval(flush, 60_000);
-    window.addEventListener("online", flush);
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener("online", flush);
-    };
-  }, [accessToken, flushPendingSync]);
-  const entryBelongsToActiveUser = useCallback((entry) => {
-    const entryOwnerId = entry?.ownerId || "";
-    const entryOwnerEmail = entry?.ownerEmail || "";
-    if (activeOwnerKey) return entryOwnerId === activeOwnerId || (!entryOwnerId && entryOwnerEmail === activeOwnerEmail);
-    return !entryOwnerId && !entryOwnerEmail;
-  }, [activeOwnerEmail, activeOwnerId, activeOwnerKey]);
+  const {
+    activeOwnerEmail,
+    activeOwnerId,
+    clearSyncStatus,
+    deleteSessionRemote,
+    displayedSyncStatus,
+    entryBelongsToActiveUser,
+    saveSetLocally,
+    syncConnected,
+    syncSessionToRemote,
+    updateSessionRemote,
+  } = useWorkoutSync({
+    authSession,
+    syncApiUrl: state.syncApiUrl,
+    setState,
+  });
 
   useEffect(() => {
     if (!state.setTimerRunning || state.setDurationRemaining <= 0) return undefined;
@@ -524,11 +408,6 @@ export default function App() {
     : isAlternateExercise(currentExercise?.name || "")
       ? `${state.repGuideSide === "left" ? "Left" : "Right"} side • ${REP_PHASES[state.repGuidePhaseIndex] || "Up"}`
       : REP_PHASES[state.repGuidePhaseIndex] || "Up";
-  const syncTarget = getSyncApiBase(state.syncApiUrl);
-  const displayedSyncStatus = !authSession?.access_token && syncTarget !== null && syncTarget !== ""
-    ? "Login required for sync."
-    : syncStatus;
-  const syncConnected = syncTarget !== null && /connected|synced/i.test(syncStatus || "");
   const authUserEmail = authSession?.user?.email || "";
   const tabs = [
     { id: "today", label: "Setup", icon: House },
@@ -615,45 +494,9 @@ export default function App() {
     return Math.max(1, Math.round((Date.now() - new Date(state.sessionStartedAt).getTime()) / 60000));
   };
 
-  const syncSessionToRemote = async (sessionRecord) => {
-    await queueSyncOperation({
-      id: `session-create:${sessionRecord.sessionId}`,
-      type: "session.create",
-      payload: sessionRecord,
-    });
-  };
-
-  const deleteSessionRemote = async (sessionId) => {
-    await queueSyncOperation({
-      id: `session-delete:${sessionId}`,
-      type: "session.delete",
-      sessionId,
-    });
-    return true;
-  };
-
-  const updateSessionRemote = async (sessionId, sessionPatch) => {
-    await queueSyncOperation({
-      id: createOperationId(`session-update:${sessionId}`),
-      type: "session.update",
-      sessionId,
-      payload: sessionPatch,
-    });
-    return true;
-  };
-
-  const saveSetLocally = async (entry) => {
-    setState((prev) => ({ ...prev, logs: [...prev.logs, entry] }));
-    await queueSyncOperation({
-      id: entry.clientLogId,
-      type: "log.create",
-      payload: entry,
-    });
-  };
-
   const signOut = async () => {
     const signedOut = await signOutFromAuth();
-    if (signedOut) setSyncStatus("");
+    if (signedOut) clearSyncStatus();
   };
 
   const startSession = () => {
@@ -892,7 +735,7 @@ export default function App() {
       });
 
       setState({ ...DEFAULT_STATE });
-      setSyncStatus("");
+      clearSyncStatus();
     });
   };
 
