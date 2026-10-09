@@ -187,6 +187,18 @@ export function nonNegativeInteger(value, max = 1_000_000) {
   return Math.min(max, Math.max(0, Math.trunc(parsed)));
 }
 
+export function nonNegativeNumber(value, max = 1_000_000) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.min(max, Math.max(0, Math.round(parsed * 10) / 10));
+}
+
+export function ratingInteger(value, min = 1, max = 10, fallback = 0) {
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 export function sessionBelongsToIdentity(session, identity) {
   if (!session || !identity) return false;
   if (session.owner_id) return session.owner_id === identity.ownerId;
@@ -311,6 +323,8 @@ function mapLogRow(row) {
     completed: row.completed,
     isTime: Boolean(row.is_time),
     weightGuide: row.weight_guide,
+    actualLoadKg: Number(row.actual_load_kg) || 0,
+    effortRpe: Number(row.effort_rpe) || 0,
     tempo: row.tempo,
     rest: row.rest_seconds,
     sessionId: row.session_id,
@@ -328,6 +342,7 @@ function mapSessionRow(row) {
     setsCompleted: row.sets_completed,
     note: row.note,
     availableWeights: row.available_weights,
+    readiness: Number(row.readiness) || 3,
     warmupCompleted: Boolean(row.warmup_completed),
     stretchCompleted: Boolean(row.stretch_completed),
   };
@@ -406,14 +421,14 @@ async function assertWriteRateLimit(request, url, env, identity) {
 async function handleSnapshot(env, identity) {
   const db = ensureDb(env);
   const logsResult = await db.prepare(`
-    SELECT timestamp, date, program, day_type, exercise, set_number, target, completed, is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes
+    SELECT timestamp, date, program, day_type, exercise, set_number, target, completed, is_time, weight_guide, actual_load_kg, effort_rpe, tempo, rest_seconds, session_id, duration_minutes
     FROM workout_logs
     WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY timestamp DESC
     LIMIT 250
   `).bind(identity.ownerId, identity.ownerEmail).all();
   const sessionsResult = await db.prepare(`
-    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
+    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, readiness, warmup_completed, stretch_completed
     FROM session_history
     WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY date DESC, session_id DESC
@@ -429,7 +444,7 @@ async function handleSnapshot(env, identity) {
 async function handleHistorySummary(env, identity) {
   const db = ensureDb(env);
   const sessionsResult = await db.prepare(`
-    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
+    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, readiness, warmup_completed, stretch_completed
     FROM session_history
     WHERE owner_id = ? OR (owner_id = '' AND owner_email = ?)
     ORDER BY date DESC, session_id DESC
@@ -441,7 +456,7 @@ async function handleHistorySummary(env, identity) {
 
   const placeholders = sessions.map(() => "?").join(",");
   const logsResult = await db.prepare(`
-    SELECT session_id, exercise, target, completed, is_time, weight_guide
+    SELECT session_id, exercise, target, completed, is_time, weight_guide, actual_load_kg, effort_rpe, timestamp
     FROM workout_logs
     WHERE (owner_id = ? OR (owner_id = '' AND owner_email = ?)) AND session_id IN (${placeholders})
     ORDER BY timestamp DESC
@@ -457,17 +472,35 @@ async function handleHistorySummary(env, identity) {
         target: row.target,
         isTime: Boolean(row.is_time),
         totalKg: 0,
+        targetTotal: 0,
+        rpeSum: 0,
+        ratedSets: 0,
+        lastLoadKg: 0,
       };
     }
-    acc[row.session_id][row.exercise].sets += 1;
-    acc[row.session_id][row.exercise].completed += Number(row.completed) || 0;
-    acc[row.session_id][row.exercise].totalKg += (Number(row.completed) || 0) * getWeightTotalKg(row.weight_guide);
+    const exercise = acc[row.session_id][row.exercise];
+    const completed = Number(row.completed) || 0;
+    const actualLoadKg = Number(row.actual_load_kg) || 0;
+    const effortRpe = Number(row.effort_rpe) || 0;
+    exercise.sets += 1;
+    exercise.completed += completed;
+    exercise.targetTotal += Number(row.target) || 0;
+    exercise.totalKg += completed * (actualLoadKg || getWeightTotalKg(row.weight_guide));
+    if (effortRpe > 0) {
+      exercise.rpeSum += effortRpe;
+      exercise.ratedSets += 1;
+    }
+    if (!exercise.lastLoadKg && actualLoadKg > 0) exercise.lastLoadKg = actualLoadKg;
     return acc;
   }, {});
 
   return {
     history: sessions.map((session) => {
-      const exercises = Object.values(logsBySession[session.sessionId] || {});
+      const exercises = Object.values(logsBySession[session.sessionId] || {}).map((exercise) => ({
+        ...exercise,
+        avgRpe: exercise.ratedSets ? exercise.rpeSum / exercise.ratedSets : 0,
+        completionRate: exercise.targetTotal > 0 ? exercise.completed / exercise.targetTotal : 1,
+      }));
       return {
         ...session,
         exercises,
@@ -494,8 +527,8 @@ async function handleLogCreate(request, env, identity) {
   const result = await db.prepare(`
     INSERT OR IGNORE INTO workout_logs (
       timestamp, date, program, day_type, exercise, set_number, target, completed,
-      is_time, weight_guide, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id, client_log_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_time, weight_guide, actual_load_kg, effort_rpe, tempo, rest_seconds, session_id, duration_minutes, owner_email, owner_id, client_log_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     timestamp,
     date,
@@ -507,6 +540,8 @@ async function handleLogCreate(request, env, identity) {
     nonNegativeInteger(payload?.completed, 100000),
     payload?.isTime === true ? 1 : 0,
     boundedText(payload?.weightGuide, 160),
+    nonNegativeNumber(payload?.actualLoadKg, 1000),
+    ratingInteger(payload?.effortRpe, 1, 10, 0),
     boundedText(payload?.tempo, 64),
     nonNegativeInteger(payload?.rest, 86400),
     sessionId,
@@ -541,8 +576,8 @@ async function handleSessionCreate(request, env, identity) {
   await db.prepare(`
     INSERT OR REPLACE INTO session_history (
       session_id, date, program, day_type, duration_minutes, sets_completed,
-      note, available_weights, warmup_completed, stretch_completed, owner_email, owner_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      note, available_weights, readiness, warmup_completed, stretch_completed, owner_email, owner_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     sessionId,
     date,
@@ -552,6 +587,7 @@ async function handleSessionCreate(request, env, identity) {
     nonNegativeInteger(payload?.setsCompleted, 100000),
     boundedText(payload?.note, 2000),
     boundedText(payload?.availableWeights, 240),
+    ratingInteger(payload?.readiness, 1, 5, 3),
     payload?.warmupCompleted === true ? 1 : 0,
     payload?.stretchCompleted === true ? 1 : 0,
     identity.ownerEmail,
@@ -585,7 +621,7 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
 
   const db = ensureDb(env);
   const existing = await db.prepare(`
-    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, warmup_completed, stretch_completed
+    SELECT session_id, date, program, day_type, duration_minutes, sets_completed, note, available_weights, readiness, warmup_completed, stretch_completed
     FROM session_history
     WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))
   `).bind(sessionId, identity.ownerId, identity.ownerEmail).first();
@@ -596,11 +632,12 @@ async function handleSessionUpdate(sessionId, request, env, identity) {
 
   await db.prepare(`
     UPDATE session_history
-    SET note = ?, available_weights = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?, owner_id = ?
+    SET note = ?, available_weights = ?, readiness = ?, warmup_completed = ?, stretch_completed = ?, owner_email = ?, owner_id = ?
     WHERE session_id = ? AND (owner_id = ? OR (owner_id = '' AND owner_email = ?))
   `).bind(
     payload.note === undefined ? existing.note : boundedText(payload.note, 2000),
     payload.availableWeights === undefined ? existing.available_weights : boundedText(payload.availableWeights, 240),
+    payload.readiness === undefined ? existing.readiness : ratingInteger(payload.readiness, 1, 5, 3),
     payload.warmupCompleted === undefined ? existing.warmup_completed : payload.warmupCompleted ? 1 : 0,
     payload.stretchCompleted === undefined ? existing.stretch_completed : payload.stretchCompleted ? 1 : 0,
     identity.ownerEmail,
