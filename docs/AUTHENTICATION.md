@@ -90,6 +90,6 @@ Do not enroll production users in app-managed passkeys until the relying-party c
 
 A signed-in user can delete the account from the Account card or the public deletion route.
 
-The flow deletes cloud workout data first, then deletes the Supabase Auth user, then clears local state on the device.
+The flow deletes cloud workout data first, then deletes the Supabase Auth user, then clears local state on the device. The deletion Edge Function requires JWT verification, uses an explicit production/preview/local origin allowlist, and pins its Supabase client dependency to the same exact version used by the app.
 
 Use a test account when validating deletion on a phone.

@@ -133,7 +133,7 @@ Deletion is deliberately split while the user still has a valid session:
 2. The JWT-protected Supabase Edge Function `delete-account` removes the Auth user using the server-side service role.
 3. Local state and the sync outbox are cleared on the device completing deletion.
 
-The service-role key never reaches the client.
+The service-role key never reaches the client. The deletion Edge Function also enforces the app origin allowlist and uses an exact Supabase client version pin.
 
 ## Progressive coaching
 
