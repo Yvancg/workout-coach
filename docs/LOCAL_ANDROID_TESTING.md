@@ -76,10 +76,12 @@ Select the physical phone as the run target in Android Studio.
 
 ## GitHub artifact route
 
-The manual **Android Device Test Build** workflow creates `workout-coach-phone-test-apk`.
+The **Android Device Test Build** workflow creates `workout-coach-phone-test-apk`.
 
-- `connected_build=false` produces a local-only APK.
-- `connected_build=true` requires the three frontend GitHub Actions secrets and produces an auth/sync-connected APK.
+- Every push to `main` automatically produces an auth/sync-connected APK.
+- Manual runs default to `connected_build=true`.
+- A manual `connected_build=false` run produces a local-only APK.
+- The Supabase URL, publishable client key and Worker URL are public frontend configuration and are defined directly in the workflow; no GitHub secrets are required for the APK build.
 - The workflow has no Google Play upload capability.
 
 ## Mandatory phone-test checklist
