@@ -67,8 +67,11 @@ assert(!workerSource.includes("API_TOKEN") && !workerSource.includes("ADMIN_FALL
 assert(
   deleteFunction.includes("auth.admin.deleteUser")
     && deleteFunction.includes("SUPABASE_SERVICE_ROLE_KEY")
-    && deleteFunction.includes("auth.getUser(token)"),
-  "Supabase Auth deletion function is missing or unsafe.",
+    && deleteFunction.includes("auth.getUser(token)")
+    && deleteFunction.includes('jsr:@supabase/supabase-js@2.117.3')
+    && deleteFunction.includes("Origin not allowed")
+    && deleteFunction.includes("workout-coach.pages.dev"),
+  "Supabase Auth deletion function is missing, unpinned, or has an unsafe origin policy.",
 );
 
 assert(authHook.includes("signInWithOAuth") && authHook.includes('provider: "google"'), "Google sign-in must remain available in v1.");
