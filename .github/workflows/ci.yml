@@ -38,8 +38,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Android Play readiness
-        run: npm run check:android-release
+      - name: Android readiness
+        run: npm run check:android
 
       - name: Web performance budget
         run: npm run check:web-budget
