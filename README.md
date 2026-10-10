@@ -147,7 +147,7 @@ Or open the project in Android Studio:
 npm run android:open
 ```
 
-A manual GitHub Actions workflow named **Android Device Test Build** can also produce a debug APK. It has no publication step.
+GitHub Actions also builds **Android Device Test Build** automatically on every push to `main`, producing a connected debug APK that can be downloaded directly on the phone. Manual runs can still choose connected or local-only mode. The workflow has no publication step.
 
 Full instructions and the phone-test checklist are in [docs/LOCAL_ANDROID_TESTING.md](docs/LOCAL_ANDROID_TESTING.md).
 
