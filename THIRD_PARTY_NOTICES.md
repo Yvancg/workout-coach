@@ -1,36 +1,28 @@
 # Third-Party Notices
 
-Project license:
-- this repository is distributed under the GNU GPLv3
+Project license: GNU GPLv3.
 
-## Exercise Reference Assets
+## Exercise reference media
 
-This project is prepared to support locally cached exercise reference media derived from the official ExerciseDB source for the exact exercises used in this app.
+The application currently ships only the project-generated SVG exercise reference cards in:
 
-Current state:
-- `public/exercise-reference/` contains locally generated placeholder reference cards created for this project.
-- No third-party ExerciseDB-derived media files are currently committed in this repository.
+`public/exercise-reference/`
 
-Current intended usage:
-- personal-use local caching from the ExerciseDB free tier
-- import only the exercise images actually needed by this app
-- prefer imported local files in the app, with placeholder fallback when an imported file is missing
+No imported GIF/WebP exercise media is part of the runtime repository after the October 2026 cleanup.
 
-Before importing real ExerciseDB-derived assets into this repository, verify:
-- the exact official ExerciseDB source URL being used for each imported asset
-- the applicable license and reuse terms for the media assets
-- whether attribution or additional notice text is required
-- whether redistribution in a public Git repository is allowed
+Previously committed imported exercise files were removed because their manifest did not contain verifiable source URLs or redistribution terms.
 
-If real ExerciseDB-derived assets are later added, update this file with:
-- source URLs or dataset identifiers
-- license/terms summary
-- attribution text if required
-- the local directory where imported assets are stored
+Do not add third-party exercise media to `public/` unless all of the following are recorded first:
 
-Selected workflow:
-- import only app-scoped exercise images for movements actually used in this project
-- stage source URLs in `scripts/exercise-asset-manifest.json`
-- download assets into `public/exercise-reference/imported/`
-- the app will prefer imported files automatically when present and fall back to local placeholders otherwise
-- keep placeholder cards until the imported files and notice text are verified
+- exact source URL or dataset identifier
+- applicable license/terms
+- redistribution permission for the public repository and deployed application
+- required attribution text
+
+## Embedded video
+
+Workout Coach embeds warmup and cooldown videos hosted by YouTube. The video files are not copied into this repository; playback remains hosted by YouTube.
+
+## Software dependencies
+
+Runtime and development dependencies are declared in `package.json` and locked in `package-lock.json`. Each dependency remains subject to its own license terms.
