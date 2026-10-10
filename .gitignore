@@ -23,11 +23,6 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 
-# Optional imported exercise media workspace
-tmp/
-cache/
-scripts/.cache/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

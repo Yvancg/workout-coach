@@ -1,292 +1,260 @@
 # Workout Coach
 
-React/Vite workout app with:
-- mobile-first session flow
-- installable PWA + Capacitor Android shell
-- optional Worker + D1 sync
+Workout Coach is a mobile-first workout companion built with React, Vite and Capacitor. It supports guided sessions, timers, offline-first workout logging, progression suggestions, optional private sync and an Android shell.
 
-## Local App Dev
+## Current release status
 
-Install dependencies and start the frontend:
+**v1.0 is in local phone testing. Google Play publication is intentionally paused.**
 
-```bash
-npm install
-npm run dev
+The repository contains no active Google Play upload workflow. The next release decision happens only after the app has been tested on a physical Android phone.
+
+Current authentication exposed in the app:
+
+- Google sign-in
+- email magic link
+
+Supabase passkeys are enabled at project level, but the client does **not** opt in to passkeys in v1.0. Passkey registration, sign-in and Android/WebAuthn testing are deferred to v1.1.
+
+## Architecture
+
+```text
+React / Vite PWA
+      |
+      | Supabase session JWT
+      v
+Supabase Auth
+      |
+      v
+Cloudflare Worker API
+      |
+      v
+Cloudflare D1
 ```
 
-Optional frontend env values live in `.env` files. Start from:
+Local reliability is independent of cloud sync:
+
+- `localStorage` holds the fast-start state
+- IndexedDB mirrors state as a recovery copy
+- an IndexedDB outbox queues authenticated writes while offline
+- the service worker provides PWA app-shell recovery
+- D1 stores synced workout logs and session history
+- Supabase is used for authentication, not application data
+- R2 is not used
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
+
+## Quick start
+
+Requirements:
+
+- Node.js 22
+- npm
+- Java 21 and Android SDK only when working on Android
+- Wrangler authentication only when working on the Worker/D1 deployment
+
+Install dependencies:
+
+```bash
+npm ci
+```
+
+Create local frontend configuration:
 
 ```bash
 cp .env.example .env.local
 ```
 
-- `VITE_SUPABASE_URL` points the app at your Supabase project.
-- `VITE_SUPABASE_ANON_KEY` is the public anon key from Supabase Auth.
-- `VITE_SYNC_API_URL` can point the app at your deployed Worker without pasting it into the UI.
-
-## Supabase + D1 Setup
-
-1. Log in to Cloudflare:
-
-```bash
-npx wrangler login
-```
-
-2. Create the D1 database:
-
-```bash
-npx wrangler d1 create workout_coach
-```
-
-3. Copy the returned `database_id` into `wrangler.toml`:
-
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "workout_coach"
-database_id = "YOUR_REAL_DATABASE_ID"
-```
-
-4. Copy the local Worker variable template:
-
-```bash
-cp .dev.vars.example .dev.vars
-```
-
-Set `ALLOWED_ORIGINS` and the Supabase values in `.dev.vars` for local development. Production Worker variables are managed in Cloudflare. `wrangler.toml` uses `keep_vars = true` so deploys preserve those remotely managed values.
-
-`ALLOWED_ORIGINS` accepts exact origins and a restricted HTTPS subdomain wildcard such as `https://*.workout-coach.pages.dev`. The wildcard matches exactly one hostname label, allowing Cloudflare Pages preview/branch URLs without allowing arbitrary nested or lookalike domains.
-
-5. Create a Supabase project and enable email magic-link auth.
-
-In Supabase:
-
-- create a project
-- enable Email auth with magic links or OTP
-- set the production Site URL to the exact production app URL
-- add redirect URLs for local/native development and, if preview authentication is required, a preview wildcard such as `https://**.workout-coach.pages.dev/**`
-- copy the project URL and publishable key
-
-6. Keep an admin fallback token only for scripts or emergency access:
-
-```bash
-npx wrangler secret put API_TOKEN
-```
-
-7. Configure the same Worker variables in Cloudflare for production. Use `.dev.vars` locally. The expected names are:
-
-```text
-ALLOWED_ORIGINS
-SUPABASE_URL
-SUPABASE_JWT_AUDIENCE
-ADMIN_FALLBACK_OWNER_EMAIL
-ADMIN_FALLBACK_OWNER_ID
-WRITE_RATE_LIMIT_MAX
-WRITE_RATE_LIMIT_WINDOW_SECONDS
-AUDIT_LOG_ENABLED
-```
-
-- `SUPABASE_URL` is your project URL.
-- `SUPABASE_JWT_AUDIENCE` is usually `authenticated` for browser sessions.
-- `ADMIN_FALLBACK_OWNER_EMAIL` and `ADMIN_FALLBACK_OWNER_ID` are only for admin scripts using `API_TOKEN`.
-- `WRITE_RATE_LIMIT_MAX` and `WRITE_RATE_LIMIT_WINDOW_SECONDS` cap write bursts on sync routes.
-- `AUDIT_LOG_ENABLED` controls lightweight Worker audit logging for auth failures, rate-limit hits, session edits, and session deletes.
-
-The Worker also has a weekly Cloudflare Cron Trigger (`0 9 * * 1`) that pings Supabase Auth health. This is a low-noise keep-alive request for Free Plan projects and does not write to D1 or user data.
-
-8. For Capacitor builds, keep `https://localhost` in the allowlist for Android and `capacitor://localhost` if you later run the app in an iOS shell.
-
-Example `.env.local`:
-
-```bash
-VITE_SUPABASE_URL=https://your-project-ref.supabase.co
-VITE_SUPABASE_ANON_KEY=your-public-supabase-anon-key
-VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
-```
-
-The app uses Supabase Auth on the frontend and sends the Supabase access token to the Worker as a bearer token. The Worker verifies that JWT against the Supabase JWKS.
-
-### Local reliability and offline sync
-
-Workout state is stored locally first. The current state is kept in `localStorage` for fast startup and mirrored to IndexedDB as a recovery copy. If the IndexedDB copy is newer, the app restores it at startup.
-
-Authenticated remote writes use an IndexedDB outbox. Set logs and session create/edit/delete operations remain queued when the network or sync service is unavailable, then retry after sign-in, when connectivity returns, and periodically while the app is open.
-
-Workout log writes carry a client-generated idempotency key. Migration `0007_log_idempotency.sql` adds the D1 column/index used to reject duplicate retries safely. Apply all D1 migrations before deploying the Worker version that expects this column.
-
-Set and rest countdowns store absolute deadlines instead of relying only on JavaScript interval ticks, so elapsed time is reconciled after browser or Android background throttling.
-
-### Progressive coaching
-
-Each set can record the actual external load used (total kg across the dumbbells), completed reps/seconds, and an optional RPE effort rating. Session setup also includes a 1–5 training-readiness value.
-
-Recommendations are deterministic and intentionally conservative:
-- first tracked sessions use the equipment-aware program starting point
-- a fully completed easy session can move up one available load step
-- very hard or incomplete work can move down one load step
-- low readiness reduces the suggested load before progression is considered
-- bodyweight movements progress through reps, time, tempo, or variation instead of inventing an external load
-- exercises marked `Bodyweight or ...` begin unloaded and add weight only after an easy completed baseline
-- single-dumbbell movements such as goblet squats are resolved against one dumbbell, rather than incorrectly doubling the available load
-
-RPE is left unrated unless the user selects a value, so missing effort data is never treated as an assumed score. Migration `0008_progressive_coaching.sql` stores actual load, RPE, and session readiness in D1. Legacy readiness values remain unknown rather than being backfilled.
-
-
-9. Apply migrations locally first:
-
-```bash
-npm run d1:migrate:local
-```
-
-10. Apply migrations to Cloudflare:
-
-```bash
-npm run d1:migrate:remote
-```
-
-11. Audit events are stored in D1 for security review. The Worker records:
-
-- auth failures (`401` / `403`)
-- write-route rate-limit hits (`429`)
-- session edits
-- session deletes
-
-## Worker Dev
-
-Run the Worker locally in one terminal:
-
-```bash
-npm run cf:dev
-```
-
-If you want admin fallback auth enabled in local Worker dev too, create a local secret before starting Wrangler:
-
-```bash
-npx wrangler secret put API_TOKEN --local
-```
-
-Run Vite in another terminal:
+Run the web app:
 
 ```bash
 npm run dev
 ```
 
-Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`, so you do not need to paste a sync URL during local development.
+Optional Worker development:
 
-If you use auth locally, the app signs in through Supabase. The fallback bearer token is only for scripts or manual admin testing.
+```bash
+cp .dev.vars.example .dev.vars
+npm run cf:dev
+```
 
-## Production Deploy
+Vite proxies `/api` to the local Worker at `http://127.0.0.1:8787`.
 
-Before production deployment, verify the D1 binding in `wrangler.toml` and the remotely managed Cloudflare Worker variables, especially the Supabase URL and allowed frontend origins. `keep_vars = true` prevents Wrangler from deleting dashboard-managed variables during deployment.
+## Environment variables
 
-For Cloudflare Pages, configure `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SYNC_API_URL` for both production and preview deployments. Matching preview variables let PR deployments exercise authentication and remote sync before merge. Keep the production Supabase redirect URL exact; use a wildcard only for preview URLs that need authentication.
+Frontend:
 
-Run the production dependency audit and application verification:
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+VITE_SYNC_API_URL
+```
+
+Worker:
+
+```text
+ALLOWED_ORIGINS
+SUPABASE_URL
+SUPABASE_JWT_AUDIENCE
+WRITE_RATE_LIMIT_MAX
+WRITE_RATE_LIMIT_WINDOW_SECONDS
+AUDIT_LOG_ENABLED
+```
+
+The Worker accepts authenticated Supabase JWTs only. The old standalone admin-token fallback has been removed.
+
+## Validation
+
+Run the same core checks used by CI:
 
 ```bash
 npm audit --omit=dev --audit-level=high
 npm test
 npm run lint
 npm run build
+npm run check:web-budget
+npm run check:android
+npm run test:e2e
 ```
 
-Deploy the Worker:
+CI also:
+
+- applies all D1 migrations locally
+- performs a Wrangler Worker dry run
+- syncs Capacitor Android
+- builds and verifies a signed validation AAB using a disposable CI key
+
+The CI AAB is validation-only and is not a Google Play artifact.
+
+## Android phone testing
+
+The current priority is physical-device testing before any store work.
+
+Use:
+
+```bash
+npm run android:debug
+```
+
+This produces:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Or open the project in Android Studio:
+
+```bash
+npm run android:open
+```
+
+A manual GitHub Actions workflow named **Android Device Test Build** can also produce a debug APK. It has no publication step.
+
+Full instructions and the phone-test checklist are in [docs/LOCAL_ANDROID_TESTING.md](docs/LOCAL_ANDROID_TESTING.md).
+
+## Authentication
+
+Current v1 auth:
+
+- Google OAuth
+- email magic link
+- persistent Supabase browser/Capacitor session
+- Worker verification against the Supabase JWKS
+- self-service account deletion
+
+Passkeys remain a v1.1 item even though they are enabled in Supabase.
+
+See [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
+## Sync and data protection
+
+Workout state is always saved locally first.
+
+When signed in, writes are queued in IndexedDB and synchronized to the Worker. Log writes carry a client-generated idempotency key so retries do not duplicate sets.
+
+Timers use absolute deadlines so background throttling can be reconciled when the web view resumes.
+
+Account deletion removes:
+
+- synced D1 workout logs
+- synced D1 session history
+- account-linked audit/rate-limit records
+- the Supabase Auth user
+- local state and queued sync operations on the device completing deletion
+
+Public policy pages:
+
+- Privacy: `https://workout-coach.pages.dev/privacy.html`
+- Account deletion information: `https://workout-coach.pages.dev/delete-account.html`
+- Secure deletion flow: `https://workout-coach.pages.dev/delete-account`
+
+## D1 migrations
+
+Apply locally:
+
+```bash
+npm run d1:migrate:local
+```
+
+Apply to production only after validation:
+
+```bash
+npm run d1:migrate:remote
+```
+
+Current migrations cover the base workout tables, session metadata, ownership, rate limiting, auditing, owner IDs, log idempotency and progressive-coaching fields.
+
+## Worker
+
+Local:
+
+```bash
+npm run cf:dev
+```
+
+Deploy:
 
 ```bash
 npm run cf:deploy
 ```
 
-Then set:
+Production runtime variables are managed in Cloudflare and preserved by `keep_vars = true` in `wrangler.toml`.
 
-```bash
-VITE_SYNC_API_URL=https://your-worker.your-subdomain.workers.dev
-```
+The weekly cron `0 9 * * 1` performs a low-noise Supabase Auth health request and does not write user data.
 
-If you prefer not to hardcode the Worker URL in a build, you can leave `VITE_SYNC_API_URL` unset and the app will stay local-only until you provide a sync endpoint in your own build.
+## API
 
-## Android Release
-
-Workout Coach is configured for Google Play with the stable package ID `com.yvan.workoutcoach`, target API 36, environment-driven release versioning, and optional upload-key signing.
-
-Normal CI generates a disposable signing key and builds a signed validation AAB. It is not a Play upload artifact.
-
-For a real Google Play build, use the manual `Android Play Release` GitHub Actions workflow after configuring the signing and production environment secrets. The workflow:
-
-- validates the app and Play release configuration
-- restores the permanent upload keystore from GitHub Actions secrets
-- builds the production web app and Capacitor shell
-- builds and verifies the signed AAB
-- exports the public upload certificate
-- stores the signed AAB as a workflow artifact
-- optionally uploads to Google Play internal testing only when explicitly enabled
-
-Google Play policy/setup requirements, signing-key instructions, required GitHub secrets, version rules, and the remaining account-deletion/privacy/health declaration gates are documented in:
-
-`docs/GOOGLE_PLAY_RELEASE.md`
-
-Do not upload the normal CI AAB to Google Play and never commit a permanent keystore to the repository.
-
-Play policy URLs:
-
-- Privacy policy: `https://workout-coach.pages.dev/privacy.html`
-- Account deletion information: `https://workout-coach.pages.dev/delete-account.html`
-- Secure deletion flow: `https://workout-coach.pages.dev/delete-account`
-
-## API Routes
+Public:
 
 - `GET /api/health`
-- `GET /api/snapshot` (auth required)
-- `GET /api/whoami` (auth required)
-- `GET /api/history-summary` (auth required)
-- `POST /api/logs` (auth required)
-- `POST /api/sessions` (auth required)
-- `PATCH /api/sessions/:sessionId` (auth required)
-- `DELETE /api/sessions/:sessionId` (auth required)
 
-`/api/history-summary` returns grouped history rows ready for the app UI, so the client no longer needs to download the full raw log history just to render session cards.
+Authenticated:
 
-The app currently exports raw CSV only from logs stored on the local device. Remote sync is used for grouped history summaries in the UI, not full raw-log rehydration.
+- `GET /api/snapshot`
+- `GET /api/whoami`
+- `GET /api/history-summary`
+- `POST /api/logs`
+- `POST /api/sessions`
+- `PATCH /api/sessions/:sessionId`
+- `DELETE /api/sessions/:sessionId`
+- `DELETE /api/account`
 
-The Worker also supports an admin fallback `API_TOKEN` for scripts, but normal app sync should use Supabase login.
+## Exercise reference media
 
-## Stored Session Metadata
+The runtime now uses only the small first-party SVG reference cards in `public/exercise-reference/`.
 
-D1 session records currently include:
-- session note
-- available weights
-- training readiness when recorded
-- warmup completion
-- stretch completion
+Previously committed imported GIF/WebP exercise media was removed because its source manifest did not contain verifiable provenance. Third-party exercise media should not be reintroduced without a confirmed source and redistribution terms.
 
-D1 set logs also include:
-- actual external load in total kg
-- optional RPE effort rating
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Exercise Reference Assets
+## Documentation
 
-Current state:
-- `public/exercise-reference/` contains local placeholder reference cards used by the UI.
-- these are safe local stand-ins and do not hotlink external media
-- when imported ExerciseDB assets exist in `public/exercise-reference/imported/`, the app prefers them automatically and falls back to the local placeholder cards
-
-Planned next step:
-- replace placeholders with true ExerciseDB-derived assets from the official ExerciseDB source, cached locally only for the exercises used by this app
-
-Recommended import workflow:
-1. use the ExerciseDB free tier for personal-use lookup/downloads
-2. fill in `scripts/exercise-asset-manifest.json` with the exact ExerciseDB image source URLs for each exercise used here
-3. run:
-
-```bash
-npm run exercise-assets:import
-```
-
-4. review imported files in `public/exercise-reference/imported/`
-5. keep the files local/personal-use unless you later confirm broader redistribution rights
-6. update `THIRD_PARTY_NOTICES.md` with source details if you keep imported third-party media in the repo
-
-See `THIRD_PARTY_NOTICES.md` for the repository policy around third-party exercise media.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Authentication](docs/AUTHENTICATION.md)
+- [Local Android testing](docs/LOCAL_ANDROID_TESTING.md)
+- [Release checklist](docs/RELEASE_CHECKLIST.md)
+- [Google Play preparation](docs/GOOGLE_PLAY_RELEASE.md)
+- [Documentation/reference files](docs/README.md)
 
 ## License
 
-This project is licensed under the GNU GPLv3. See `LICENSE`.
+GNU GPLv3. See [LICENSE](LICENSE).

@@ -1,4 +1,4 @@
-const CACHE_NAME = "workout-coach-v2";
+const CACHE_NAME = "workout-coach-v3";
 const MAX_RUNTIME_ENTRIES = 80;
 const APP_SHELL = [
   "/",

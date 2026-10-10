@@ -7,13 +7,12 @@ import { HeroHeader } from "./components/HeroHeader";
 import { HistoryTab } from "./components/HistoryTab";
 import { SessionTab } from "./components/SessionTab";
 import { TodayTab } from "./components/TodayTab";
+import { useAccountDeletion } from "./hooks/useAccountDeletion";
 import { useInstallPrompt } from "./hooks/useInstallPrompt";
 import { usePersistentState } from "./hooks/usePersistentState";
 import { useSupabaseAuth } from "./hooks/useSupabaseAuth";
 import { useWorkoutSync } from "./hooks/useWorkoutSync";
-import { clearSyncOutbox, createOperationId } from "./lib/syncOutbox";
-import { deleteRemoteAccountData } from "./lib/syncClient";
-import { clearStateBackup } from "./lib/stateBackup";
+import { createOperationId } from "./lib/syncOutbox";
 import {
   getNextStageTransition,
   getProgramStartPatch,
@@ -30,7 +29,6 @@ import {
 } from "./lib/workoutAudio";
 import {
   DEFAULT_REST_SECONDS,
-  DEFAULT_STATE,
   getProgramDisplayName,
   PROGRAMS,
   REP_PHASE_DURATIONS,
@@ -47,7 +45,7 @@ import {
   confirmAction,
   downloadCsv,
   formatSeconds,
-  getExerciseReferenceImageCandidates,
+  getExerciseReferenceImage,
   getPhaseCue,
   getNextDayType,
   isAlternateExercise,
@@ -67,10 +65,7 @@ export default function App() {
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
-  const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
-  const [deletingAccount, setDeletingAccount] = useState(false);
-  const [deletionStatus, setDeletionStatus] = useState("");
   const { installApp, installReady } = useInstallPrompt();
   const {
     authConfigured,
@@ -134,6 +129,19 @@ export default function App() {
     authSession,
     syncApiUrl: state.syncApiUrl,
     setState,
+  });
+
+  const {
+    clearAllData,
+    deleteAccount,
+    deletingAccount,
+    deletionStatus,
+  } = useAccountDeletion({
+    authSession,
+    syncApiUrl: state.syncApiUrl,
+    deleteAuthAccount,
+    setState,
+    clearSyncStatus,
   });
 
   useEffect(() => {
@@ -409,9 +417,7 @@ export default function App() {
     visibleHistory,
     visibleLogs,
   ]);
-  const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
-  const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
-  const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
+  const currentExerciseImage = currentExercise ? getExerciseReferenceImage(currentExercise.name) : "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(visibleLogs, visibleHistory).slice(0, 8), [visibleLogs, visibleHistory]);
   const repGuideBorderProgress = useMemo(() => {
     if (!currentExercise || currentExercise.isTime || state.sessionStage !== "exercise") return null;
@@ -520,14 +526,6 @@ export default function App() {
     repGuideCountdownTimeoutsRef.current = [];
     countdownAudioContextRef.current?.close().catch(() => {});
   }, []);
-
-  const handleExerciseImageError = () => {
-    if (!currentExercise) return;
-    setExerciseImageIndexes((prev) => ({
-      ...prev,
-      [currentExercise.name]: Math.min((prev[currentExercise.name] || 0) + 1, currentExerciseImages.length - 1),
-    }));
-  };
 
   const currentSessionDurationMinutes = () => {
     if (!state.sessionStartedAt) return "";
@@ -697,69 +695,6 @@ export default function App() {
   const exportLogs = () => {
     const rows = [SHEET_HEADERS, ...visibleLogs.map((log) => SHEET_HEADERS.map((header) => log[header] ?? ""))];
     downloadCsv(`workout-log-${todayDateLabel()}.csv`, rows);
-  };
-
-  const clearLocalWorkoutData = async () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(`${STORAGE_KEY}:savedAt`);
-    } catch (error) {
-      console.error("Could not clear local workout storage.", error);
-    }
-
-    const results = await Promise.allSettled([
-      clearStateBackup(STORAGE_KEY),
-      clearSyncOutbox(),
-    ]);
-    results.filter((result) => result.status === "rejected").forEach((result) => {
-      console.error("Could not clear a local workout data store.", result.reason);
-    });
-
-    setState({ ...DEFAULT_STATE });
-    clearSyncStatus();
-  };
-
-  const clearAllData = () => {
-    confirmAction("Clear all local workout data from this device?", clearLocalWorkoutData);
-  };
-
-  const deleteAccount = async () => {
-    if (deletingAccount) return;
-    if (!authSession?.access_token) {
-      setDeletionStatus("Sign in before deleting your account.");
-      return;
-    }
-
-    const confirmation = window.prompt(
-      "This permanently deletes your account and synced workout data. Type DELETE to continue.",
-    );
-    if (confirmation !== "DELETE") {
-      setDeletionStatus("Account deletion cancelled.");
-      return;
-    }
-
-    setDeletingAccount(true);
-    setDeletionStatus("Deleting synced workout data...");
-
-    try {
-      const result = await deleteRemoteAccountData(state.syncApiUrl, authSession.access_token);
-      if (result.skipped) {
-        throw new Error("Cloud sync is not configured, so account deletion cannot be completed safely.");
-      }
-
-      setDeletionStatus("Synced workout data deleted. Removing login account...");
-      const authDeleted = await deleteAuthAccount();
-      if (!authDeleted) {
-        throw new Error("Synced workout data was deleted, but the login account could not be deleted. Sign in again and retry.");
-      }
-
-      await clearLocalWorkoutData();
-      setDeletionStatus("Account and synced workout data deleted.");
-    } catch (error) {
-      setDeletionStatus(error instanceof Error ? error.message : "Could not delete the account. Please try again.");
-    } finally {
-      setDeletingAccount(false);
-    }
   };
 
   const deleteSession = (sessionId) => {
@@ -971,7 +906,6 @@ export default function App() {
             syncStatus={displayedSyncStatus}
             formatSeconds={formatSeconds}
               DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
-              onExerciseImageError={handleExerciseImageError}
               isAlternateExercise={isAlternateExercise}
               toggleSound={toggleSoundEnabled}
               startSession={startSession}

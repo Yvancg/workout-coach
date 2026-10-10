@@ -205,7 +205,6 @@ export function SessionTab({
   syncStatus,
   formatSeconds,
   DEFAULT_REST_SECONDS,
-  onExerciseImageError,
   isAlternateExercise,
   toggleSound,
   startSession,
@@ -326,7 +325,7 @@ export function SessionTab({
             <div className="border-4 border-black rounded-2xl p-3">
               <div className="text-sm font-black mb-2">Coaching cues</div>
               <div className="exercise-reference-media rounded-2xl overflow-hidden border-4 border-black mb-1">
-                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} decoding="async" onError={onExerciseImageError} />
+                <img className="exercise-reference-image" src={currentExerciseImage} alt={`${currentExercise.name} visual reference`} decoding="async" />
               </div>
               <ul className="space-y-1">
                 {currentExercise.cues?.map((cue) => (

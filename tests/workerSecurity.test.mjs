@@ -14,6 +14,62 @@ import worker, {
   sessionBelongsToIdentity,
 } from "../worker/src/index.js";
 
+async function createJwtFixture({
+  slug,
+  email = `${slug}@example.com`,
+  userId = `user-${slug}`,
+  expiresInSeconds = 300,
+}) {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = `${slug}-key`;
+  jwk.alg = "RS256";
+  jwk.use = "sig";
+
+  const supabaseUrl = `https://${slug}.supabase.co`;
+  const issuer = `${supabaseUrl}/auth/v1`;
+  const now = Math.floor(Date.now() / 1000);
+  const token = await new SignJWT({ email })
+    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
+    .setSubject(userId)
+    .setIssuer(issuer)
+    .setAudience("authenticated")
+    .setIssuedAt(now - 5)
+    .setExpirationTime(now + expiresInSeconds)
+    .sign(privateKey);
+
+  return { email, issuer, jwk, supabaseUrl, token, userId };
+}
+
+async function withMockedJwks(fixture, callback) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === `${fixture.issuer}/.well-known/jwks.json`) {
+      return new Response(JSON.stringify({ keys: [fixture.jwk] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return originalFetch(input);
+  };
+
+  try {
+    return await callback();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+function authEnv(fixture, extra = {}) {
+  return {
+    SUPABASE_URL: fixture.supabaseUrl,
+    SUPABASE_JWT_AUDIENCE: "authenticated",
+    ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
+    ...extra,
+  };
+}
+
 test("session ownership requires matching user id once an owner id exists", () => {
   const identity = { ownerId: "user-new", ownerEmail: "same@example.com" };
   assert.equal(
@@ -56,7 +112,6 @@ test("coaching numeric inputs are bounded before D1 writes", () => {
   assert.equal(ratingInteger(-3, 1, 10, 0), 1);
   assert.equal(ratingInteger("bad", 1, 5, 3), 3);
 });
-
 
 test("preview-origin wildcard matches exactly one secure hostname label", () => {
   assert.equal(originMatchesRule("https://abc123.workout-coach.pages.dev", "https://*.workout-coach.pages.dev"), true);
@@ -109,126 +164,73 @@ test("allowed preflight echoes the requesting origin and rejects untrusted origi
 });
 
 test("unexpected Worker failures do not expose internal exception text", async () => {
-  const env = {
-    ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
-    API_TOKEN: "test-admin-token",
-    ADMIN_FALLBACK_OWNER_EMAIL: "admin@example.com",
-    ADMIN_FALLBACK_OWNER_ID: "admin",
-  };
-  const response = await worker.fetch(new Request("https://api.example/api/snapshot", {
-    headers: { Authorization: "Bearer test-admin-token" },
-  }), env, { waitUntil() {} });
+  const fixture = await createJwtFixture({ slug: "hidden-error" });
 
-  assert.equal(response.status, 500);
-  assert.deepEqual(await response.json(), { error: "Internal server error" });
-});
-
-
-test("valid Supabase JWT resolves identity without using the admin fallback", async () => {
-  const { publicKey, privateKey } = await generateKeyPair("RS256");
-  const jwk = await exportJWK(publicKey);
-  jwk.kid = "phase6-key";
-  jwk.alg = "RS256";
-  jwk.use = "sig";
-
-  const issuer = "https://phase6.supabase.co/auth/v1";
-  const token = await new SignJWT({ email: "phase6@example.com" })
-    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
-    .setSubject("user-phase6")
-    .setIssuer(issuer)
-    .setAudience("authenticated")
-    .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(privateKey);
-
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-    const url = String(input);
-    if (url === `${issuer}/.well-known/jwks.json`) {
-      return new Response(JSON.stringify({ keys: [jwk] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return originalFetch(input);
-  };
-
-  try {
-    const response = await worker.fetch(new Request("https://api.example/api/whoami", {
+  await withMockedJwks(fixture, async () => {
+    const response = await worker.fetch(new Request("https://api.example/api/snapshot", {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${fixture.token}`,
         Origin: "https://workout-coach.pages.dev",
       },
-    }), {
-      SUPABASE_URL: "https://phase6.supabase.co",
-      SUPABASE_JWT_AUDIENCE: "authenticated",
-      ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
-    }, { waitUntil() {} });
+    }), authEnv(fixture), { waitUntil() {} });
+
+    assert.equal(response.status, 500);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await response.json(), { error: "Internal server error" });
+  });
+});
+
+test("valid Supabase JWT resolves the exact authenticated identity", async () => {
+  const fixture = await createJwtFixture({
+    slug: "valid-auth",
+    email: "valid@example.com",
+    userId: "user-valid",
+  });
+
+  await withMockedJwks(fixture, async () => {
+    const response = await worker.fetch(new Request("https://api.example/api/whoami", {
+      headers: {
+        Authorization: `Bearer ${fixture.token}`,
+        Origin: "https://workout-coach.pages.dev",
+      },
+    }), authEnv(fixture), { waitUntil() {} });
 
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
     assert.deepEqual(await response.json(), {
       authenticated: true,
-      userId: "user-phase6",
-      email: "phase6@example.com",
+      userId: fixture.userId,
+      email: fixture.email,
     });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
 });
 
 test("expired Supabase JWT is rejected as 401 instead of a server error", async () => {
-  const { publicKey, privateKey } = await generateKeyPair("RS256");
-  const jwk = await exportJWK(publicKey);
-  jwk.kid = "expired-key";
-  jwk.alg = "RS256";
-  jwk.use = "sig";
+  const fixture = await createJwtFixture({
+    slug: "expired-auth",
+    email: "expired@example.com",
+    userId: "expired-user",
+    expiresInSeconds: -60,
+  });
 
-  const issuer = "https://expired.supabase.co/auth/v1";
-  const token = await new SignJWT({ email: "expired@example.com" })
-    .setProtectedHeader({ alg: "RS256", kid: jwk.kid })
-    .setSubject("expired-user")
-    .setIssuer(issuer)
-    .setAudience("authenticated")
-    .setIssuedAt(Math.floor(Date.now() / 1000) - 120)
-    .setExpirationTime(Math.floor(Date.now() / 1000) - 60)
-    .sign(privateKey);
-
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-    const url = String(input);
-    if (url === `${issuer}/.well-known/jwks.json`) {
-      return new Response(JSON.stringify({ keys: [jwk] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    return originalFetch(input);
-  };
-
-  try {
+  await withMockedJwks(fixture, async () => {
     const response = await worker.fetch(new Request("https://api.example/api/whoami", {
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${fixture.token}`,
         Origin: "https://workout-coach.pages.dev",
       },
-    }), {
-      SUPABASE_URL: "https://expired.supabase.co",
-      SUPABASE_JWT_AUDIENCE: "authenticated",
-      ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
-    }, { waitUntil() {} });
+    }), authEnv(fixture), { waitUntil() {} });
 
     assert.equal(response.status, 401);
     assert.deepEqual(await response.json(), { error: "Invalid or expired login" });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  });
 });
 
 test("missing authentication is rejected before protected API access", async () => {
   const response = await worker.fetch(new Request("https://api.example/api/whoami", {
     headers: { Origin: "https://workout-coach.pages.dev" },
   }), {
-    SUPABASE_URL: "https://phase6.supabase.co",
+    SUPABASE_URL: "https://missing-auth.supabase.co",
     ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
   }, { waitUntil() {} });
 
@@ -236,8 +238,12 @@ test("missing authentication is rejected before protected API access", async () 
   assert.deepEqual(await response.json(), { error: "Login required" });
 });
 
-
 test("account deletion removes only the authenticated owner's D1 data classes", async () => {
+  const fixture = await createJwtFixture({
+    slug: "delete-auth",
+    email: "delete@example.com",
+    userId: "owner-delete",
+  });
   const operations = [];
   const db = {
     prepare(sql) {
@@ -267,25 +273,23 @@ test("account deletion removes only the authenticated owner's D1 data classes", 
     },
   };
 
-  const response = await worker.fetch(new Request("https://api.example/api/account", {
-    method: "DELETE",
-    headers: {
-      Authorization: "Bearer test-admin-token",
-      Origin: "https://workout-coach.pages.dev",
-    },
-  }), {
-    DB: db,
-    API_TOKEN: "test-admin-token",
-    ADMIN_FALLBACK_OWNER_ID: "owner-delete",
-    ADMIN_FALLBACK_OWNER_EMAIL: "delete@example.com",
-    ALLOWED_ORIGINS: "https://workout-coach.pages.dev",
-    AUDIT_LOG_ENABLED: "false",
-    WRITE_RATE_LIMIT_MAX: "60",
-    WRITE_RATE_LIMIT_WINDOW_SECONDS: "60",
-  }, { waitUntil() {} });
+  await withMockedJwks(fixture, async () => {
+    const response = await worker.fetch(new Request("https://api.example/api/account", {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${fixture.token}`,
+        Origin: "https://workout-coach.pages.dev",
+      },
+    }), authEnv(fixture, {
+      DB: db,
+      AUDIT_LOG_ENABLED: "false",
+      WRITE_RATE_LIMIT_MAX: "60",
+      WRITE_RATE_LIMIT_WINDOW_SECONDS: "60",
+    }), { waitUntil() {} });
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, deleted: "account_data" });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, deleted: "account_data" });
+  });
 
   const batchDeletes = operations.filter((operation) => operation.kind === "batch");
   assert.equal(batchDeletes.length, 4);
@@ -295,5 +299,5 @@ test("account deletion removes only the authenticated owner's D1 data classes", 
   assert.ok(batchDeletes.some((operation) => /DELETE FROM request_rate_limits/.test(operation.sql)));
 
   const logDelete = batchDeletes.find((operation) => /DELETE FROM workout_logs/.test(operation.sql));
-  assert.deepEqual(logDelete.values, ["owner-delete", "delete@example.com"]);
+  assert.deepEqual(logDelete.values, [fixture.userId, fixture.email]);
 });

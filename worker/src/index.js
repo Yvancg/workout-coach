@@ -1,5 +1,22 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
+const remoteJwksByUrl = new Map();
+const AUTH_FAILURE_CODES = new Set([
+  "ERR_JWT_EXPIRED",
+  "ERR_JWT_CLAIM_VALIDATION_FAILED",
+  "ERR_JWT_INVALID",
+  "ERR_JWS_INVALID",
+  "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
+  "ERR_JWKS_NO_MATCHING_KEY",
+]);
+
+function getRemoteJwks(jwksUrl) {
+  if (!remoteJwksByUrl.has(jwksUrl)) {
+    remoteJwksByUrl.set(jwksUrl, createRemoteJWKSet(new URL(jwksUrl)));
+  }
+  return remoteJwksByUrl.get(jwksUrl);
+}
+
 function getAllowedOriginRules(env) {
   const configured = env.ALLOWED_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) || [];
   return configured.length ? configured : [
@@ -57,6 +74,7 @@ function json(data, request, env, init = {}) {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      "Cache-Control": "no-store",
       ...getCorsHeaders(request, env),
       ...(init.headers || {}),
     },
@@ -269,7 +287,7 @@ async function verifySupabaseJwt(request, env) {
     throw createHttpError(401, "Login required");
   }
 
-  const jwks = createRemoteJWKSet(new URL(jwksUrl));
+  const jwks = getRemoteJwks(jwksUrl);
   let payload;
   try {
     ({ payload } = await jwtVerify(token, jwks, {
@@ -277,15 +295,7 @@ async function verifySupabaseJwt(request, env) {
       audience: getSupabaseAudience(env),
     }));
   } catch (error) {
-    const authFailureCodes = new Set([
-      "ERR_JWT_EXPIRED",
-      "ERR_JWT_CLAIM_VALIDATION_FAILED",
-      "ERR_JWT_INVALID",
-      "ERR_JWS_INVALID",
-      "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
-      "ERR_JWKS_NO_MATCHING_KEY",
-    ]);
-    if (authFailureCodes.has(error?.code)) {
+    if (AUTH_FAILURE_CODES.has(error?.code)) {
       throw createHttpError(401, "Invalid or expired login");
     }
     throw error;
@@ -301,30 +311,7 @@ async function verifySupabaseJwt(request, env) {
 }
 
 async function getRequestIdentity(request, env) {
-  const authHeader = request.headers.get("Authorization") || "";
-  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (bearerToken && env.API_TOKEN && bearerToken === env.API_TOKEN) {
-    const fallbackOwnerEmail = (env.ADMIN_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
-    const fallbackOwnerId = (env.ADMIN_FALLBACK_OWNER_ID || fallbackOwnerEmail || "admin-token").trim();
-    return { ownerId: fallbackOwnerId, ownerEmail: fallbackOwnerEmail };
-  }
-
-  if (bearerToken) {
-    return await verifySupabaseJwt(request, env);
-  }
-
-  const expectedToken = env.API_TOKEN;
-  if (!expectedToken) {
-    throw createHttpError(401, "Login required");
-  }
-
-  if (bearerToken !== expectedToken) {
-    throw createHttpError(401, "Unauthorized");
-  }
-
-  const fallbackOwnerEmail = (env.ADMIN_FALLBACK_OWNER_EMAIL || "admin-token").trim().toLowerCase();
-  const fallbackOwnerId = (env.ADMIN_FALLBACK_OWNER_ID || fallbackOwnerEmail || "admin-token").trim();
-  return { ownerId: fallbackOwnerId, ownerEmail: fallbackOwnerEmail };
+  return verifySupabaseJwt(request, env);
 }
 
 function mapLogRow(row) {

@@ -1,4 +1,4 @@
-import { DEFAULT_STATE, IMPORTED_IMAGE_EXTENSIONS, REP_PHASES, STORAGE_KEY } from "./workoutData.js";
+import { DEFAULT_STATE, REP_PHASES, STORAGE_KEY } from "./workoutData.js";
 
 export function loadState() {
   try {
@@ -115,12 +115,6 @@ export function slugifyExerciseName(name = "") {
 export function getExerciseReferenceImage(name = "") {
   const slug = slugifyExerciseName(name);
   return `/exercise-reference/${slug}.svg`;
-}
-
-export function getExerciseReferenceImageCandidates(name = "") {
-  const slug = slugifyExerciseName(name);
-  const imported = IMPORTED_IMAGE_EXTENSIONS.map((ext) => `/exercise-reference/imported/${slug}.${ext}`);
-  return [...imported, getExerciseReferenceImage(name)];
 }
 
 export function getWeightTotalKg(weightGuide = "") {
