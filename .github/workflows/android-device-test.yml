@@ -1,12 +1,15 @@
 name: Android Device Test Build
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       connected_build:
-        description: Include configured Supabase/Worker connectivity
+        description: Include Supabase authentication and Worker sync
         required: true
-        default: false
+        default: true
         type: boolean
 
 permissions:
@@ -15,6 +18,11 @@ permissions:
 concurrency:
   group: workout-coach-android-device-test
   cancel-in-progress: true
+
+env:
+  PUBLIC_SUPABASE_URL: https://acdlnecvjwctpgqjgnsr.supabase.co
+  PUBLIC_SUPABASE_KEY: sb_publishable_TYZmvKmev2QHNbi0IBQNkA_gNLZU0-o
+  PUBLIC_SYNC_API_URL: https://workout-coach-api.yvan11.workers.dev
 
 jobs:
   build:
@@ -48,26 +56,20 @@ jobs:
           npm run lint
           npm run check:android
 
-      - name: Validate connected-build configuration
-        if: ${{ inputs.connected_build }}
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          VITE_SYNC_API_URL: ${{ secrets.VITE_SYNC_API_URL }}
-        run: |
-          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_SYNC_API_URL; do
-            if [[ -z "${!name}" ]]; then
-              echo "Missing required GitHub secret for connected build: $name"
-              exit 1
-            fi
-          done
-
       - name: Build web app
         env:
-          VITE_SUPABASE_URL: ${{ inputs.connected_build && secrets.VITE_SUPABASE_URL || '' }}
-          VITE_SUPABASE_ANON_KEY: ${{ inputs.connected_build && secrets.VITE_SUPABASE_ANON_KEY || '' }}
-          VITE_SYNC_API_URL: ${{ inputs.connected_build && secrets.VITE_SYNC_API_URL || '' }}
-        run: npm run build
+          MANUAL_CONNECTED_BUILD: ${{ inputs.connected_build }}
+        run: |
+          if [[ "${{ github.event_name }}" == "push" || "$MANUAL_CONNECTED_BUILD" == "true" ]]; then
+            export VITE_SUPABASE_URL="$PUBLIC_SUPABASE_URL"
+            export VITE_SUPABASE_ANON_KEY="$PUBLIC_SUPABASE_KEY"
+            export VITE_SYNC_API_URL="$PUBLIC_SYNC_API_URL"
+            echo "Building connected phone-test APK."
+          else
+            unset VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_SYNC_API_URL
+            echo "Building local-only phone-test APK."
+          fi
+          npm run build
 
       - name: Sync Capacitor Android
         run: npx cap sync android
