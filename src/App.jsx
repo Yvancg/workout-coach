@@ -47,7 +47,7 @@ import {
   confirmAction,
   downloadCsv,
   formatSeconds,
-  getExerciseReferenceImageCandidates,
+  getExerciseReferenceImage,
   getPhaseCue,
   getNextDayType,
   isAlternateExercise,
@@ -67,7 +67,6 @@ export default function App() {
   const [repGuideCountdown, setRepGuideCountdown] = useState(0);
   const [repGuideVisualElapsedMs, setRepGuideVisualElapsedMs] = useState(0);
   const [setTimerVisualElapsedMs, setSetTimerVisualElapsedMs] = useState(0);
-  const [exerciseImageIndexes, setExerciseImageIndexes] = useState({});
   const [openHistoryMenuId, setOpenHistoryMenuId] = useState(null);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deletionStatus, setDeletionStatus] = useState("");
@@ -409,9 +408,7 @@ export default function App() {
     visibleHistory,
     visibleLogs,
   ]);
-  const currentExerciseImages = currentExercise ? getExerciseReferenceImageCandidates(currentExercise.name) : [];
-  const currentExerciseImageIndex = currentExercise ? exerciseImageIndexes[currentExercise.name] || 0 : 0;
-  const currentExerciseImage = currentExerciseImages[currentExerciseImageIndex] || currentExerciseImages.at(-1) || "";
+  const currentExerciseImage = currentExercise ? getExerciseReferenceImage(currentExercise.name) : "";
   const sessionSummaries = useMemo(() => summarizeSessionLogs(visibleLogs, visibleHistory).slice(0, 8), [visibleLogs, visibleHistory]);
   const repGuideBorderProgress = useMemo(() => {
     if (!currentExercise || currentExercise.isTime || state.sessionStage !== "exercise") return null;
@@ -520,14 +517,6 @@ export default function App() {
     repGuideCountdownTimeoutsRef.current = [];
     countdownAudioContextRef.current?.close().catch(() => {});
   }, []);
-
-  const handleExerciseImageError = () => {
-    if (!currentExercise) return;
-    setExerciseImageIndexes((prev) => ({
-      ...prev,
-      [currentExercise.name]: Math.min((prev[currentExercise.name] || 0) + 1, currentExerciseImages.length - 1),
-    }));
-  };
 
   const currentSessionDurationMinutes = () => {
     if (!state.sessionStartedAt) return "";
@@ -971,7 +960,6 @@ export default function App() {
             syncStatus={displayedSyncStatus}
             formatSeconds={formatSeconds}
               DEFAULT_REST_SECONDS={DEFAULT_REST_SECONDS}
-              onExerciseImageError={handleExerciseImageError}
               isAlternateExercise={isAlternateExercise}
               toggleSound={toggleSoundEnabled}
               startSession={startSession}
