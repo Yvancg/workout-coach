@@ -1,0 +1,134 @@
+name: Publish Website APK
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/publish-website-apk
+  workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: Android Device Test Build artifact ID to publish
+        required: true
+        default: "11663785102"
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: workout-coach-website-apk
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve artifact
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+        run: |
+          ARTIFACT_ID="${INPUT_ARTIFACT_ID:-11663785102}"
+          case "$ARTIFACT_ID" in
+            ''|*[!0-9]*)
+              echo "artifact_id must be numeric"
+              exit 1
+              ;;
+          esac
+
+          curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" \
+            -o "$RUNNER_TEMP/artifact.json"
+
+          test "$(jq -r '.expired' "$RUNNER_TEMP/artifact.json")" = "false"
+          test "$(jq -r '.name' "$RUNNER_TEMP/artifact.json")" = "workout-coach-phone-test-apk"
+
+          echo "artifact_id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(jq -r '.workflow_run.head_sha' "$RUNNER_TEMP/artifact.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified APK artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          curl --fail --location --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            -o "$RUNNER_TEMP/apk.zip"
+
+          unzip -q "$RUNNER_TEMP/apk.zip" -d "$RUNNER_TEMP/apk"
+          test -f "$RUNNER_TEMP/apk/app-debug.apk"
+
+          SIZE="$(stat -c%s "$RUNNER_TEMP/apk/app-debug.apk")"
+          if (( SIZE < 1000000 )); then
+            echo "APK is unexpectedly small: $SIZE bytes"
+            exit 1
+          fi
+
+          MAGIC="$(xxd -p -l 4 "$RUNNER_TEMP/apk/app-debug.apk")"
+          test "$MAGIC" = "504b0304"
+
+      - name: Publish APK into Pages static assets
+        env:
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+          SOURCE_SHA: ${{ steps.artifact.outputs.source_sha }}
+        run: |
+          mkdir -p public/downloads
+          cp "$RUNNER_TEMP/apk/app-debug.apk" public/downloads/workout-coach-android.apk
+
+          APK_SHA256="$(sha256sum public/downloads/workout-coach-android.apk | awk '{print $1}')"
+          APK_BYTES="$(stat -c%s public/downloads/workout-coach-android.apk)"
+          BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          node - "$ARTIFACT_ID" "$SOURCE_SHA" "$APK_SHA256" "$APK_BYTES" "$BUILT_AT" <<'NODE'
+          const fs = require("fs");
+          const [artifactId, sourceCommit, sha256, sizeBytes, publishedAt] = process.argv.slice(2);
+          fs.writeFileSync(
+            "public/downloads/android.json",
+            JSON.stringify({
+              version: "1.0.0",
+              channel: "device-test",
+              filename: "workout-coach-android.apk",
+              artifactId: Number(artifactId),
+              sourceCommit,
+              sha256,
+              sizeBytes: Number(sizeBytes),
+              publishedAt,
+            }, null, 2) + "\n",
+          );
+          NODE
+
+      - name: Commit website APK
+        env:
+          ARTIFACT_ID: ${{ steps.artifact.outputs.artifact_id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/downloads/workout-coach-android.apk public/downloads/android.json
+
+          if git diff --cached --quiet; then
+            echo "Website APK is already current."
+            exit 0
+          fi
+
+          git commit -m "Publish Android website APK from artifact $ARTIFACT_ID [skip ci]"
+          git push origin HEAD:main
