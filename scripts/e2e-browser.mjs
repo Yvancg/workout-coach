@@ -214,7 +214,7 @@ async function run() {
 
     await waitForText("Session Setup");
     await waitForText("Download Android APK");
-    if (!await evaluate('Boolean(document.querySelector("a[href=\"/downloads/workout-coach-android.apk\"]"))')) {
+    if (!await evaluate(`Boolean(document.querySelector('a[href="/downloads/workout-coach-android.apk"]'))`)) {
       fail("Android APK download link is missing from the Today screen.");
     }
 
