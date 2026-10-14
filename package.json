@@ -19,7 +19,8 @@
     "d1:migrate:remote": "wrangler d1 migrations apply workout_coach --remote",
     "android:sync": "npm run build && npx cap sync android",
     "android:debug": "npm run android:sync && bash -lc 'cd android && ./gradlew assembleDebug --no-daemon'",
-    "android:open": "npm run android:sync && npx cap open android"
+    "android:open": "npm run android:sync && npx cap open android",
+    "check:downloads": "node scripts/check-download-assets.mjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

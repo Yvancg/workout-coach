@@ -147,7 +147,13 @@ Or open the project in Android Studio:
 npm run android:open
 ```
 
-GitHub Actions also builds **Android Device Test Build** automatically on every push to `main`, producing a connected debug APK that can be downloaded directly on the phone. Manual runs can still choose connected or local-only mode. The workflow has no publication step.
+GitHub Actions also builds **Android Device Test Build** automatically on every push to `main`, producing a connected debug APK. A separately verified APK is published as a durable website asset and can be downloaded directly from:
+
+`https://workout-coach.pages.dev/downloads/workout-coach-android.apk`
+
+The homepage exposes the same download as **Download Android APK**. The **Publish Website APK** workflow refreshes that static website file from a selected successful device-test artifact; it does not publish to Google Play.
+
+Because these are temporary test-signed APKs, Android may require uninstalling an older test copy if its signing key differs. Production/update signing will be finalized only when Play publication resumes.
 
 Full instructions and the phone-test checklist are in [docs/LOCAL_ANDROID_TESTING.md](docs/LOCAL_ANDROID_TESTING.md).
 

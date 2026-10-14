@@ -1,7 +1,7 @@
 {
   "name": "Workout Coach",
   "short_name": "W/O Coach",
-  "description": "Minimal workout tracking with timers, history, and offline support.",
+  "description": "Guided strength workouts with offline tracking, progression coaching, and private sync.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fcfbf8",

@@ -130,5 +130,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "Publish Android website APK from artifact $ARTIFACT_ID [skip ci]"
+          git commit -m "Publish Android website APK from artifact $ARTIFACT_ID"
           git push origin HEAD:main

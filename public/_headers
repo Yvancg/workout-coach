@@ -8,3 +8,11 @@
 
 /sw.js
   Cache-Control: no-cache
+
+/downloads/workout-coach-android.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="Workout-Coach-1.0.0.apk"
+  Cache-Control: public, max-age=0, must-revalidate
+
+/downloads/android.json
+  Cache-Control: public, max-age=0, must-revalidate
