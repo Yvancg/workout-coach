@@ -44,6 +44,8 @@ assert(/ANDROID_VERSION_CODE/.test(gradle), "Android versionCode must remain inj
 assert(/ANDROID_VERSION_NAME/.test(gradle), "Android versionName must remain injectable for future signed releases.");
 assert(gradle.includes(`?: "${pkg.version}"`), "Default Android versionName must match package.json.");
 
+const minSdk = Number(variables.match(/minSdkVersion\s*=\s*(\d+)/)?.[1] || 0);
+assert(minSdk === 24, `Android minimum SDK has changed from the documented API 24; found ${minSdk}.`);
 const targetSdk = Number(variables.match(/targetSdkVersion\s*=\s*(\d+)/)?.[1] || 0);
 const compileSdk = Number(variables.match(/compileSdkVersion\s*=\s*(\d+)/)?.[1] || 0);
 assert(targetSdk >= 36, `Android target must remain API 36 or newer; found ${targetSdk}.`);
