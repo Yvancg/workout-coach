@@ -1,5 +1,5 @@
-import { ArrowUpRight, Download, Play, Volume2, VolumeX } from "lucide-react";
-import { getProgramDisplayName } from "../lib/workoutData";
+import { ArrowUpRight, Play, Volume2, VolumeX } from "lucide-react";
+import { getProgramDisplayName } from "../lib/workoutData";\nimport { AndroidInstallCard } from "./AndroidInstallCard";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
@@ -37,6 +37,8 @@ export function TodayTab({
 
   return (
     <>
+      <AndroidInstallCard installReady={installReady} installApp={installApp} />
+
       <Card className="border-4 border-black rounded-3xl shadow-none today-panel">
         <CardHeader className="card-block-header">
           <CardTitle className="text-2xl font-black">Account</CardTitle>
@@ -196,8 +198,6 @@ export function TodayTab({
           </Button>
         </CardContent>
       </Card>
-
-      {installReady && <Button className="w-full h-14 text-lg font-black border-4 border-black rounded-2xl today-accent" onClick={installApp}><Download className="mr-2 h-5 w-5" /> Install App</Button>}
     </>
   );
 }
