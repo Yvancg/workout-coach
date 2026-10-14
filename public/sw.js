@@ -1,4 +1,4 @@
-const CACHE_NAME = "workout-coach-v3";
+const CACHE_NAME = "workout-coach-v4";
 const MAX_RUNTIME_ENTRIES = 80;
 const APP_SHELL = [
   "/",
@@ -50,7 +50,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (requestUrl.pathname.startsWith("/api/")) {
+  if (
+    requestUrl.pathname.startsWith("/api/")
+    || requestUrl.pathname.startsWith("/downloads/")
+  ) {
     event.respondWith(fetch(event.request));
     return;
   }
