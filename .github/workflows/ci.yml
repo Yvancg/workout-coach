@@ -41,6 +41,9 @@ jobs:
       - name: Android readiness
         run: npm run check:android
 
+      - name: Website APK integrity
+        run: npm run check:downloads
+
       - name: Web performance budget
         run: npm run check:web-budget
 
