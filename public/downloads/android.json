@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "channel": "device-test",
+  "filename": "workout-coach-android.apk",
+  "artifactId": 11663785102,
+  "sourceCommit": "cee18301163c31c6a2ba22636e35f675009dcf32",
+  "sha256": "f3ae6a90cbca2c7c1678e7f8ddc8b8f5d777b1dc69a2a7ea28b6b3277d3f8b7e",
+  "sizeBytes": 4360594,
+  "publishedAt": "2026-10-14T05:49:38Z"
+}
