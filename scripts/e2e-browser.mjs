@@ -214,6 +214,9 @@ async function run() {
 
     await waitForText("Session Setup");
     await waitForText("Download Android APK");
+    await waitForText("Compatible with Android 7.0 or newer (API 24)");
+    await waitForText("On your Android phone, open the downloaded APK.");
+    await waitForText("Xiaomi/HyperOS troubleshooting");
     if (!await evaluate(`Boolean(document.querySelector('a[href="/downloads/workout-coach-android.apk"]'))`)) {
       fail("Android APK download link is missing from the Today screen.");
     }
