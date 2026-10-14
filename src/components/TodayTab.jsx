@@ -1,5 +1,6 @@
 import { ArrowUpRight, Play, Volume2, VolumeX } from "lucide-react";
-import { getProgramDisplayName } from "../lib/workoutData";\nimport { AndroidInstallCard } from "./AndroidInstallCard";
+import { getProgramDisplayName } from "../lib/workoutData";
+import { AndroidInstallCard } from "./AndroidInstallCard";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "./ui";
 
 export function TodayTab({
