@@ -74,6 +74,18 @@ npm run android:open
 
 Select the physical phone as the run target in Android Studio.
 
+## Website download route
+
+The current connected Android test APK is published directly on the production site:
+
+`https://workout-coach.pages.dev/downloads/workout-coach-android.apk`
+
+From the homepage, tap **Download Android APK**, open the downloaded file, and approve Android's install-from-this-source prompt if required. On Xiaomi/HyperOS this permission may be attached to the browser or Files app that opened the APK.
+
+The website APK is integrity-checked in CI against `public/downloads/android.json` and is excluded from the service-worker cache so a replaced APK is not served stale.
+
+If Android reports a signing conflict when replacing an older test build, uninstall the older Workout Coach test copy first. This removes that copy's local-only data. Test signing is temporary until the production Play signing path is activated.
+
 ## GitHub artifact route
 
 The **Android Device Test Build** workflow creates `workout-coach-phone-test-apk`.
