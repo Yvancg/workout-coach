@@ -213,6 +213,11 @@ async function run() {
     }
 
     await waitForText("Session Setup");
+    await waitForText("Download Android APK");
+    if (!await evaluate('Boolean(document.querySelector("a[href=\"/downloads/workout-coach-android.apk\"]"))')) {
+      fail("Android APK download link is missing from the Today screen.");
+    }
+
     const initialState = await waitForState((state) => state.activeTab === "today", "Initial state did not hydrate.");
     if (initialState.sessionStage !== "idle") fail("Fresh browser did not start idle.");
 
@@ -237,6 +242,50 @@ async function run() {
       return true;
     })()`);
     if (!swReady) fail("Service worker did not become ready.");
+
+    const androidDownload = await evaluate(`(async () => {
+      const metadataResponse = await fetch("/downloads/android.json", { cache: "no-store" });
+      const metadata = metadataResponse.ok ? await metadataResponse.json() : null;
+      const apkResponse = await fetch("/downloads/workout-coach-android.apk", {
+        method: "HEAD",
+        cache: "no-store",
+      });
+      return {
+        metadataOk: metadataResponse.ok,
+        metadata,
+        apkOk: apkResponse.ok,
+        contentLength: Number(apkResponse.headers.get("content-length") || 0),
+      };
+    })()`);
+    if (!androidDownload.metadataOk || androidDownload.metadata?.version !== "1.0.0") {
+      fail("Android download metadata is unavailable or has the wrong version.");
+    }
+    if (androidDownload.metadata?.filename !== "workout-coach-android.apk") {
+      fail("Android download metadata points to an unexpected filename.");
+    }
+    if (!androidDownload.apkOk) {
+      fail("Android APK is not served by the web application.");
+    }
+    if (androidDownload.contentLength && androidDownload.contentLength < 1_000_000) {
+      fail("Android APK response is unexpectedly small.");
+    }
+
+    const cachedDownloadUrls = await evaluate(`(async () => {
+      const names = await caches.keys();
+      const urls = [];
+      for (const name of names) {
+        const cache = await caches.open(name);
+        const keys = await cache.keys();
+        for (const request of keys) {
+          const url = new URL(request.url);
+          if (url.pathname.startsWith("/downloads/")) urls.push(url.pathname);
+        }
+      }
+      return urls;
+    })()`);
+    if (cachedDownloadUrls.length) {
+      fail(`Android download assets must not be cached by the service worker: ${cachedDownloadUrls.join(", ")}`);
+    }
 
     await setField("Training readiness today", 4);
     await setField("Session note", "Phase 6 browser E2E");
