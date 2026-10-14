@@ -15,7 +15,10 @@ export function AndroidInstallCard({ installReady, installApp }) {
       </CardHeader>
       <CardContent className="card-block-body space-y-3">
         <p className="text-sm font-semibold">
-          Download the native Android test build directly from this site. Version 1.0.0, about 4.4 MB.
+          Compatible with Android 7.0 or newer (API 24), across brands including Samsung, Google Pixel, Xiaomi and others.
+        </p>
+        <p className="text-xs font-semibold">
+          Version 1.0.0 device-test build, about 4.4 MB. Compatibility has not been verified on every model.
         </p>
 
         <a
@@ -28,8 +31,11 @@ export function AndroidInstallCard({ installReady, installApp }) {
         </a>
 
         <div className="border-4 border-black rounded-2xl p-3 bg-white text-black text-sm font-semibold">
-          On Xiaomi/HyperOS, open the downloaded APK and allow installs from this browser or your Files app if Android asks.
+          On your Android phone, open the downloaded APK. If prompted, allow installation from your browser or Files app.
         </div>
+        <p className="text-xs font-semibold">
+          Xiaomi/HyperOS troubleshooting: If installation is blocked, check the “Install unknown apps” permission for the app opening the APK. Settings may differ by device.
+        </p>
 
         <p className="text-xs font-semibold">
           If Android refuses to install over an older test copy, uninstall the old Workout Coach first. Test APKs use temporary signing until the Play release is configured.

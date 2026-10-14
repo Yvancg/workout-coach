@@ -80,7 +80,9 @@ The current connected Android test APK is published directly on the production s
 
 `https://workout-coach.pages.dev/downloads/workout-coach-android.apk`
 
-From the homepage, tap **Download Android APK**, open the downloaded file, and approve Android's install-from-this-source prompt if required. On Xiaomi/HyperOS this permission may be attached to the browser or Files app that opened the APK.
+The app targets **Android 7.0 or newer (API 24)** and is not limited to Xiaomi. It should be installable on compatible Android phones from different manufacturers, though not every model has been physically tested.
+
+From the homepage, tap **Download Android APK**, open the downloaded file, and approve the browser's or Files app's **Install unknown apps** permission if prompted. The setting name and location can vary by phone. On Xiaomi/HyperOS specifically, check the permission assigned to whichever app opened the APK if installation is blocked.
 
 The website APK is integrity-checked in CI against `public/downloads/android.json` and is excluded from the service-worker cache so a replaced APK is not served stale.
 
