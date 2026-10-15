@@ -105,10 +105,3 @@ jobs:
       - name: Verify Android bundle signature
         run: jarsigner -verify android/app/build/outputs/bundle/release/app-release.aab
 
-      - name: Upload Android CI bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: workout-coach-android-ci-aab
-          path: android/app/build/outputs/bundle/release/*.aab
-          if-no-files-found: error
-          retention-days: 7

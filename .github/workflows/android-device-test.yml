@@ -1,9 +1,6 @@
 name: Android Device Test Build
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       connected_build:
@@ -83,4 +80,4 @@ jobs:
           name: workout-coach-phone-test-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 5

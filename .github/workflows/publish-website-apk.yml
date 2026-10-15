@@ -10,8 +10,8 @@ on:
     inputs:
       artifact_id:
         description: Android Device Test Build artifact ID to publish
-        required: true
-        default: "11663785102"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -41,7 +41,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_ARTIFACT_ID: ${{ inputs.artifact_id }}
         run: |
-          ARTIFACT_ID="${INPUT_ARTIFACT_ID:-11663785102}"
+          ARTIFACT_ID="${INPUT_ARTIFACT_ID:-}"
+          if [[ -z "$ARTIFACT_ID" ]]; then
+            ARTIFACT_ID="$(curl --fail --silent --show-error \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?name=workout-coach-phone-test-apk&per_page=100" \
+              | jq -r '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty')"
+          fi
+          if [[ -z "$ARTIFACT_ID" ]]; then
+            echo "::error::No valid APK artifact. Run Android Device Test Build first."
+            exit 1
+          fi
           case "$ARTIFACT_ID" in
             ''|*[!0-9]*)
               echo "artifact_id must be numeric"
